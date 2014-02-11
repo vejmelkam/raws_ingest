@@ -1,4 +1,4 @@
--module(mesowest_ingest_csv).
+-module(mesowest_ingest).
 -author("Martin Vejmelka <vejmelkam@gmail.com>").
 -export([retrieve_observations/3]).
 -include("raws_ingest.hrl").
@@ -9,9 +9,9 @@
 
 -compile(export_all).
 
--spec retrieve_observations(string(),calendar:datetime(),[string()]) -> {#raws_station{},[#raws_obs{}]}.
-retrieve_observations(StationId,TimeGMT,Vars) ->
-  Url = build_download_url(StationId,TimeGMT,Vars),
+-spec retrieve_observations(string(),calendar:datetime(),[var_id()]) -> {#raws_station{},[#raws_obs{}]}.
+retrieve_observations(StationId,TimeGMT,VarIds) ->
+  Url = build_download_url(StationId,TimeGMT,VarIds),
   {ok,Bin} = retrieve_data(Url),
   parse_data(Bin).
 
@@ -40,7 +40,7 @@ build_download_url(StationId,{{Y,M,D},{H,_,_}},Vars) ->
       "&year1=", integer_to_list(Y),
       io_lib:format("&hour1=~2..0B", [H]),
       "&hours=24&output=csv&order=1",
-      lists:map(fun (V) -> ["&",V,"=",V] end, Vars) ]).
+      lists:map(fun (Vid) -> V = mesowest_wisdom:varid_to_name(Vid), ["&",V,"=",V] end, Vars) ]).
 
 -spec strip_tags(binary()) -> string().
 strip_tags(Bin) ->
@@ -56,32 +56,42 @@ parse_data(Data) ->
   StId = StationInfo#raws_station.id,
   % keep looking for the line starting PARM =
   [Variables|ObsText] = lists:dropwhile(fun (L) -> not lists:prefix("PARM =", L) end, Rest),
-  VarSeq = parse_variable_names(Variables),
+  VarIdSeq = parse_variable_names(Variables),
   % next keep parsing all lines containing observations until end of text
-  Obss = parse_observations(ObsText,VarSeq,[]),
-  {StationInfo,lists:map(fun (X) -> X#raws_obs{station_id=StId} end, Obss)}.
+  Obss = parse_observations(ObsText,VarIdSeq,[]),
+  {StationInfo,lists:map(fun (X) -> complete_obs(X,StId) end, Obss)}.
+
+-spec complete_obs(#raws_obs{},string()) -> #raws_obs{}.
+complete_obs(X=#raws_obs{var_id=Vid,value=V},StId) ->
+  Variance = mesowest_wisdom:estimate_variance(StId,Vid,V),
+  X#raws_obs{station_id=StId,variance=Variance}.
 
 
--spec parse_variable_names(string()) -> [string()].
+-spec parse_variable_names(string()) -> [var_id()].
 parse_variable_names([$P,$A,$R,$M,$ ,$=, $ |VarNames]) ->
   {_,Vars} = lists:split(6,string:tokens(VarNames,",\n")),
-  Vars.
+  VarIds = lists:map(fun mesowest_wisdom:classify_varname/1,Vars),
+  VarIds.
 
--spec parse_observations([string()],[string()],[#raws_obs{}]) -> [#raws_obs{}].
+-spec parse_observations([string()],[var_id()],[#raws_obs{}]) -> [#raws_obs{}].
 parse_observations([],_,Os) ->
   lists:flatten(Os);
-parse_observations([O|Rest],VarSeq,Acc) when length(O) > 10 ->
-  parse_observations(Rest,VarSeq,[parse_single_obs(O,VarSeq)|Acc]);
-parse_observations([_|Rest],VarSeq,Acc) ->
-  parse_observations(Rest,VarSeq,Acc).
+parse_observations([O|Rest],VarIdSeq,Acc) when length(O) > 10 ->
+  parse_observations(Rest,VarIdSeq,[parse_single_obs(O,VarIdSeq)|Acc]);
+parse_observations([_|Rest],VarIdSeq,Acc) ->
+  parse_observations(Rest,VarIdSeq,Acc).
 
--spec parse_single_obs(string(),[string()]) -> #raws_obs{}.
-parse_single_obs(Text,VarSeq) ->
+
+-spec parse_single_obs(string(),[var_id()]) -> #raws_obs{}.
+parse_single_obs(Text,VarIdSeq) ->
   [MonStr,DayStr,YearStr,HourStr,MinStr,"GMT"|ValueStrs] = split_on_commas(Text),
   [Mon,Day,Year,Hour,Min] = lists:map(fun list_to_integer/1, [MonStr,DayStr,YearStr,HourStr,MinStr]),
   Timestamp = {{Year,Mon,Day},{Hour,Min,0}},
-  DefValsOnly = lists:filter(fun ({_,[]}) -> false; (_) -> true end, lists:zip(VarSeq,ValueStrs)),
-  lists:map(fun ({Var,Val}) -> #raws_obs{timestamp=Timestamp,varname=Var,value=list_to_number(Val)} end, DefValsOnly).
+  DefValsOnly = lists:filter(fun ({_,[]}) -> false; (_) -> true end, lists:zip(VarIdSeq,ValueStrs)),
+  lists:map(fun ({VarId,Val}) -> 
+        XV = mesowest_wisdom:xform_value(VarId,list_to_number(Val)),
+        #raws_obs{timestamp=Timestamp,var_id=VarId,value=XV}
+    end, DefValsOnly).
 
 -spec split_on_commas(string()) -> [string()].
 split_on_commas(Text) ->
@@ -132,7 +142,7 @@ parse_station_info_espc2_test() ->
   #raws_station{id="ESPC2",name="ESTES PARK",lat=40.366361,lon=-105.562778,elevation=2405} = parse_station_info(string:tokens("ESPC2 ESTES PARK 40.366361 -105.562778 2405 m RAWS\n", " \t\n")).
 
 parse_variable_names_test() ->
-  ["TMPF","RELH","SKNT","GUST","DRCT","QFLG","SOLR","TLKE","PREC","SINT","FT","FM","PEAK","PDIR","VOLT","DWPF"] = 
+  ["TMPF","RELH","TSOI","PRES","PREC"] = 
   parse_variable_names("PARM = MON,DAY,YEAR,HR,MIN,TMZN,TMPF,RELH,SKNT,GUST,DRCT,QFLG,SOLR,TLKE,PREC,SINT,FT,FM,PEAK,PDIR,VOLT,DWPF\n").
 
 parse_single_obs_test() ->

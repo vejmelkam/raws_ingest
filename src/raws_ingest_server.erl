@@ -85,12 +85,14 @@ store_station_infos(StInfos) ->
 store_observations(Obs) ->
   mnesia:transaction(fun () -> lists:map(fun mnesia:write/1, Obs) end).
 
-safe_retrieve_observations(Sts,TimeGMT,Vars) ->
+safe_retrieve_observations(Sts,TimeGMT,VarIds) ->
   Report = lists:map(fun (S) ->
         try
-          {StInfo,Obs} = mesowest_ingest_csv:retrieve_observations(S,TimeGMT,Vars),
+          {StInfo,Obs} = mesowest_ingest:retrieve_observations(S,TimeGMT,VarIds),
           {ok,StInfo,Obs}
         catch Cls:Exc ->
+          error_logger:error_msg("raws_ingest_server encountered exception ~p:~p in retrieve_observations for stations ~w at GMT time ~w for vars ~w~nstacktrace: ~p",
+            [Cls,Exc,S,TimeGMT,VarIds,erlang:get_stacktrace()]),
           {error,S,calendar:local_time(),Cls,Exc}
         end end, Sts),
   {Oks,Errors} = lists:partition(fun ({ok,_,_}) -> true; (_) -> false end, Report),

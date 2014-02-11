@@ -2,8 +2,8 @@
  [
   {description, "Ingest application for Mesowest RAWS observations."},
   {vsn, "1.0"},
-  {mod, {raws_ingest_app, [ ["ESPC2","BAWC2","RRAC2"], ["TMPF","FM","RELH","SKNT"], 180]}},
-  {modules,[raws_ingest_app,raws_ingest_sup,raws_ingest_server,mesowest_ingest_csv]},
+  {mod, {raws_ingest_app, [ ["ESPC2","BAWC2","RRAC2"], [temp,fm10,rel_humidity], 180]}},
+  {modules,[raws_ingest_app,raws_ingest_sup,raws_ingest_server,mesowest_ingest,mesowest_wisdom]},
   {registered, [raws_ingest_server]},
   {applications, [kernel,stdlib,inets,mnesia]},
   {included_applications, []},
