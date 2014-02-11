@@ -12,7 +12,7 @@ RELH         | rel\_humidity   | relative humidity         | fraction
 PREC         | accum\_precip   | accumulated precipitation | mm
 TMPF         | temp            | surf. air temperature     | K
 TSOI         | soil\_temp      | soil temperature          | K
-PRES         | pressure        | surface temperature       | Pa
+PRES         | pressure        | surface pressure          | Pa
 
 It is simple to add support for more variables if this is needed, see how in (src/mesowest_wisdom.erl).
 
