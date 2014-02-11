@@ -105,3 +105,7 @@ and cleared with
     raws_ingest:clear_errors()
 
 
+# Caveats
+
+  * if a station does not have a sensor with a variable, the MesoWest website will return nothing, thr library currently does nothing about this
+
