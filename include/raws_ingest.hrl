@@ -1,5 +1,5 @@
 
--type var_id() :: fm10|temp|rel_humidity|skin_temp|pressure.
+-type var_id() :: fm10|temp|rel_humidity|soil_temp|pressure|accum_precip.
 
 -record(raws_obs,{
   timestamp :: calendar:datetime(),  % always in GMT
