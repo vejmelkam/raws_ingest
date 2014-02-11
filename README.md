@@ -3,7 +3,7 @@
 Erlang application that ingests RAWS observations for given variables from the MesoWest website.
 
 ## Variables
-Currently the following variables are supported (the ingest software transforms them into the units given below.
+Currently the following variables are supported (the ingest software transforms them into the units given below):
 
 MesoWest Var | raws\_ingest id | description               | units
 -------------|-----------------|---------------------------|------

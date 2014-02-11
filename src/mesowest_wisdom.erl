@@ -14,9 +14,10 @@
 %% 1) make up a new atom that will identify this variable (the id)
 %% 2) add a clause to classify_varname/1 and to varid_to_name/1 to map its name to the id
 %% 3) if a transformation is required (to the physical unit of your choice), add a new clause to xform_value/2
-%% 3) add a clause to retrieve_unit/1 so that its clear to the user what physical unit the variable is stored in
-%% 4) add a clause to estimate_variance/3 that either returns your variance estimate for
+%% 4) add a clause to retrieve_unit/1 so that its clear to the user what physical unit the variable is stored in
+%% 5) add a clause to estimate_variance/3 that either returns your variance estimate for
 %%    a particular observation or the atom unknown if you have no idea
+%% 6) add the atom to the var_id() type in raws_ingest.hrl
 %%
 %% ----------------------------------
 
