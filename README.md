@@ -26,7 +26,8 @@ Use of the ````raws_ingest```` application is simple.  The configuration is stor
 The argument list contains a list of station ids, a list of variables and refresh frequency given as an interval in minutes.
 Note that the system will not accept a refresh frequency less than 60 minutes.
 
-As soon as the application is started, the observations for all stations are retrieved and stored.
+As soon as the application is started, the observations for all stations are retrieved and stored periodically according to the
+specified timeout.
 
 ## Storage
 
