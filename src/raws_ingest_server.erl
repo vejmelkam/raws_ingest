@@ -6,7 +6,7 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/4]).
+-export([start_link/5]).
 -export([report_errors/0,clear_errors/0,update_now/0]).
 
 %% ------------------------------------------------------------------
@@ -20,8 +20,8 @@
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-start_link(Token,StationIds,VarIds,TimeoutMins) ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [Token,StationIds,VarIds,TimeoutMins,[]], []).
+start_link(Token,StationIds,VarIds,TimeoutMins,Method) ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [Token,StationIds,VarIds,TimeoutMins,Method,[]], []).
 
 
 report_errors() ->
@@ -43,33 +43,33 @@ init(Args) ->
     {ok, Args}.
 
 
-handle_call(Request, _From, State=[Token,StationIds,VarIds,TimeoutMins,Errors]) ->
+handle_call(Request, _From, State=[Token,StationIds,VarIds,TimeoutMins,Method,Errors]) ->
   case Request of
     update_now ->
       TimeNow = calendar:universal_time(),
       UpdateFrom = shift_by_minutes(TimeNow, -TimeoutMins),
-      {NewErrors,StationInfos,Obs} = safe_retrieve_observations(json,Token,UpdateFrom,TimeNow,StationIds,VarIds),
+      {NewErrors,StationInfos,Obs} = safe_retrieve_observations(Method,Token,UpdateFrom,TimeNow,StationIds,VarIds),
       store_station_infos(StationInfos),
       store_observations(Obs),
-      {reply, ok, [Token,StationIds,VarIds,TimeoutMins,NewErrors ++ Errors]};
+      {reply, ok, [Token,StationIds,VarIds,TimeoutMins,Method,NewErrors ++ Errors]};
     report_errors ->
       {reply, Errors, State};
     clear_errors ->
-      {reply, ok, [Token,StationIds,VarIds,TimeoutMins,[]]}
+      {reply, ok, [Token,StationIds,VarIds,TimeoutMins,Method,[]]}
   end.
 
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(update_timeout,[Token,StationIds,VarIds,TimeoutMins,Errors]) ->
+handle_info(update_timeout,[Token,StationIds,VarIds,TimeoutMins,Method,Errors]) ->
   TimeNow = calendar:universal_time(),
   UpdateFrom = shift_by_minutes(TimeNow, -TimeoutMins),
-  {NewErrors,StationInfos,Obs} = safe_retrieve_observations(json,Token,UpdateFrom,TimeNow,StationIds,VarIds),
+  {NewErrors,StationInfos,Obs} = safe_retrieve_observations(Method,Token,UpdateFrom,TimeNow,StationIds,VarIds),
   store_station_infos(StationInfos),
   store_observations(Obs),
   timer:send_after(TimeoutMins * 60 * 1000, update_timeout),
-  {noreply, [Token,StationIds,VarIds,TimeoutMins,NewErrors ++ Errors]};
+  {noreply, [Token,StationIds,VarIds,TimeoutMins,Method,NewErrors ++ Errors]};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -89,7 +89,7 @@ store_station_infos(StInfos) ->
 store_observations(Obs) ->
   mnesia:transaction(fun () -> lists:map(fun mnesia:write/1, Obs) end).
 
-safe_retrieve_observations(json,Token,From,To,Sts,VarIds) ->
+safe_retrieve_observations(mesowest_json,Token,From,To,Sts,VarIds) ->
   try
     {StInfos,Obss} = mesowest_json_ingest:retrieve_observations(From,To,Sts,VarIds,Token),
     {[],StInfos,Obss}
@@ -98,7 +98,7 @@ safe_retrieve_observations(json,Token,From,To,Sts,VarIds) ->
                            [Cls,Exc,Sts,From,To,VarIds,erlang:get_stacktrace()]),
     {[{error,Sts,calendar:local_time(),Cls,Exc}], [], []}
   end;
-safe_retrieve_observations(web,_Token,_From,_To,_Sts,_VarIds) ->
+safe_retrieve_observations(mesowest_web,_Token,_From,_To,_Sts,_VarIds) ->
   {[],[],[]}.
 
 

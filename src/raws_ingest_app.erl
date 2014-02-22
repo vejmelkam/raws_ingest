@@ -11,11 +11,12 @@
 %% Application callbacks
 %% ===================================================================
 
-start(_StartType, Args=[_,VarIds,TimeoutMins]) ->
+start(_StartType, Args=[_,VarIds,TimeoutMins,Method]) ->
     init_raws_tables(),
     Token = read_token(),
     true = lists:foldl(fun (X,Acc) -> mesowest_wisdom:is_known_var(X) and Acc end, true, VarIds),
     check_timeout_mins(TimeoutMins),
+    check_method(Method),
     raws_ingest_sup:start_link([Token|Args]).
 
 stop(_State) ->
@@ -52,4 +53,9 @@ check_timeout_mins(_) -> throw(timeout_too_small).
 read_token() ->
   {ok,B} = file:read_file("etc/token"),
   string:strip(binary_to_list(B),right,$\n).
+
+
+check_method(mesowest_json) -> ok;
+check_method(mesowest_web) -> ok;
+check_method(_) -> throw(unknown_method).
 
