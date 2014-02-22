@@ -98,8 +98,19 @@ safe_retrieve_observations(mesowest_json,Token,From,To,Sts,VarIds) ->
                            [Cls,Exc,Sts,From,To,VarIds,erlang:get_stacktrace()]),
     {[{error,Sts,calendar:local_time(),Cls,Exc}], [], []}
   end;
-safe_retrieve_observations(mesowest_web,_Token,_From,_To,_Sts,_VarIds) ->
-  {[],[],[]}.
+safe_retrieve_observations(mesowest_web,_Token,_From,To,Sts,VarIds) ->
+  Report = lists:map(fun (S) ->
+        try
+          {StInfo,Obs} = mesowest_ingest:retrieve_observations(S,To,VarIds),
+          {ok,StInfo,Obs}
+        catch Cls:Exc ->
+          error_logger:error_msg("raws_ingest_server encountered exception ~p:~p in retrieve_observations for stations ~w at GMT time ~w for vars ~w~nstacktrace: ~p",
+            [Cls,Exc,S,To,VarIds,erlang:get_stacktrace()]),
+          {error,S,calendar:local_time(),Cls,Exc}
+        end end, Sts),
+  {Oks,Errors} = lists:partition(fun ({ok,_,_}) -> true; (_) -> false end, Report),
+  {_,StInfos,Obss} = lists:unzip3(Oks),
+  {Errors,StInfos,lists:flatten(Obss)}.
 
 
 -spec shift_by_minutes(calendar:datetime(),integer()) -> calendar:datetime().
