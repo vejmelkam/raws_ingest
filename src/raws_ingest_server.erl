@@ -92,7 +92,7 @@ store_observations(Obs) ->
 safe_retrieve_observations(json,Token,From,To,Sts,VarIds) ->
   try
     {StInfos,Obss} = mesowest_json_ingest:retrieve_observations(From,To,Sts,VarIds,Token),
-    {ok,StInfos,Obss}
+    {[],StInfos,Obss}
   catch Cls:Exc ->
     error_logger:error_msg("raws_ingest_server encountered exception ~p:~p in retrieve_observations for stations ~w from ~w to ~w for vars ~w~nstacktrace: ~p",
                            [Cls,Exc,Sts,From,To,VarIds,erlang:get_stacktrace()]),
