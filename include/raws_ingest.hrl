@@ -1,5 +1,5 @@
 
--type var_id() :: fm10|temp|rel_humidity|soil_temp|pressure|accum_precip.
+-type var_id() :: fm10|air_temp|rel_humidity|soil_temp|pressure|accum_precip|fuel_temp.
 
 -record(raws_obs,{
   timestamp :: calendar:datetime(),  % always in GMT
@@ -17,6 +17,10 @@
     elevation :: number()}).
 
 
+-record(raws_var,{
+    id :: string(),
+    full_name :: string(),
+    units :: string()}).
 
 
 

@@ -13,9 +13,10 @@
 
 start(_StartType, Args=[_,VarIds,TimeoutMins]) ->
     init_raws_tables(),
+    Token = read_token(),
     true = lists:foldl(fun (X,Acc) -> mesowest_wisdom:is_known_var(X) and Acc end, true, VarIds),
     check_timeout_mins(TimeoutMins),
-    raws_ingest_sup:start_link(Args).
+    raws_ingest_sup:start_link([Token|Args]).
 
 stop(_State) ->
     ok.
@@ -44,6 +45,11 @@ ensure_table_exists(Name,RecFields,NdxFields) ->
   end.
 
 -spec check_timeout_mins(number()) -> ok.
-check_timeout_mins(T) when T > 60 -> ok;
+check_timeout_mins(T) when T >= 60 -> ok;
 check_timeout_mins(_) -> throw(timeout_too_small).
+
+
+read_token() ->
+  {ok,B} = file:read_file("etc/token"),
+  string:strip(binary_to_list(B),right,$\n).
 

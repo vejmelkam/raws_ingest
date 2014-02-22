@@ -6,7 +6,7 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/3]).
+-export([start_link/4]).
 -export([report_errors/0,clear_errors/0,update_now/0]).
 
 %% ------------------------------------------------------------------
@@ -20,8 +20,8 @@
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-start_link(StationIds,VarNames,TimeoutMins) ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [StationIds,VarNames,TimeoutMins,[]], []).
+start_link(Token,StationIds,VarIds,TimeoutMins) ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [Token,StationIds,VarIds,TimeoutMins,[]], []).
 
 
 report_errors() ->
@@ -43,29 +43,33 @@ init(Args) ->
     {ok, Args}.
 
 
-handle_call(Request, _From, State=[StationIds,VarNames,TimeoutMins,Errors]) ->
+handle_call(Request, _From, State=[Token,StationIds,VarIds,TimeoutMins,Errors]) ->
   case Request of
     update_now ->
-      {NewErrors,StationInfos,Obs} = safe_retrieve_observations(StationIds,calendar:universal_time(),VarNames),
+      TimeNow = calendar:universal_time(),
+      UpdateFrom = shift_by_minutes(TimeNow, -TimeoutMins),
+      {NewErrors,StationInfos,Obs} = safe_retrieve_observations(json,Token,UpdateFrom,TimeNow,StationIds,VarIds),
       store_station_infos(StationInfos),
       store_observations(Obs),
-      {reply, ok, [StationIds,VarNames,TimeoutMins,NewErrors ++ Errors]};
+      {reply, ok, [Token,StationIds,VarIds,TimeoutMins,NewErrors ++ Errors]};
     report_errors ->
       {reply, Errors, State};
     clear_errors ->
-      {reply, ok, [StationIds,VarNames,TimeoutMins,[]]}
+      {reply, ok, [Token,StationIds,VarIds,TimeoutMins,[]]}
   end.
 
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(update_timeout,[StationIds,VarNames,TimeoutMins,Errors]) ->
-  {NewErrors,StationInfos,Obs} = safe_retrieve_observations(StationIds,calendar:universal_time(),VarNames),
+handle_info(update_timeout,[Token,StationIds,VarIds,TimeoutMins,Errors]) ->
+  TimeNow = calendar:universal_time(),
+  UpdateFrom = shift_by_minutes(TimeNow, -TimeoutMins),
+  {NewErrors,StationInfos,Obs} = safe_retrieve_observations(json,Token,UpdateFrom,TimeNow,StationIds,VarIds),
   store_station_infos(StationInfos),
   store_observations(Obs),
   timer:send_after(TimeoutMins * 60 * 1000, update_timeout),
-  {noreply, [StationIds,VarNames,TimeoutMins,NewErrors ++ Errors]};
+  {noreply, [Token,StationIds,VarIds,TimeoutMins,NewErrors ++ Errors]};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -85,17 +89,21 @@ store_station_infos(StInfos) ->
 store_observations(Obs) ->
   mnesia:transaction(fun () -> lists:map(fun mnesia:write/1, Obs) end).
 
-safe_retrieve_observations(Sts,TimeGMT,VarIds) ->
-  Report = lists:map(fun (S) ->
-        try
-          {StInfo,Obs} = mesowest_ingest:retrieve_observations(S,TimeGMT,VarIds),
-          {ok,StInfo,Obs}
-        catch Cls:Exc ->
-          error_logger:error_msg("raws_ingest_server encountered exception ~p:~p in retrieve_observations for stations ~w at GMT time ~w for vars ~w~nstacktrace: ~p",
-            [Cls,Exc,S,TimeGMT,VarIds,erlang:get_stacktrace()]),
-          {error,S,calendar:local_time(),Cls,Exc}
-        end end, Sts),
-  {Oks,Errors} = lists:partition(fun ({ok,_,_}) -> true; (_) -> false end, Report),
-  {_,StInfos,Obss} = lists:unzip3(Oks),
-  {Errors,StInfos,lists:flatten(Obss)}.
+safe_retrieve_observations(json,Token,From,To,Sts,VarIds) ->
+  try
+    {StInfos,Obss} = mesowest_json_ingest:retrieve_observations(From,To,Sts,VarIds,Token),
+    {ok,StInfos,Obss}
+  catch Cls:Exc ->
+    error_logger:error_msg("raws_ingest_server encountered exception ~p:~p in retrieve_observations for stations ~w from ~w to ~w for vars ~w~nstacktrace: ~p",
+                           [Cls,Exc,Sts,From,To,VarIds,erlang:get_stacktrace()]),
+    {[{error,Sts,calendar:local_time(),Cls,Exc}], [], []}
+  end;
+safe_retrieve_observations(web,_Token,_From,_To,_Sts,_VarIds) ->
+  {[],[],[]}.
+
+
+-spec shift_by_minutes(calendar:datetime(),integer()) -> calendar:datetime().
+shift_by_minutes(DT,Mins) ->
+  S = calendar:datetime_to_gregorian_seconds(DT),
+  calendar:gregorian_seconds_to_datetime(S + Mins * 60).
 

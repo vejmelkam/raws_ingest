@@ -2,7 +2,7 @@
  [
   {description, "Ingest application for Mesowest RAWS observations."},
   {vsn, "1.0"},
-  {mod, {raws_ingest_app, [ ["ESPC2","BAWC2","RRAC2"], [temp,fm10,rel_humidity,accum_precip], 180]}},
+  {mod, {raws_ingest_app, [ ["ESPC2","BAWC2","RRAC2"], [air_temp,fm10,rel_humidity,soil_temp], 180]}},
   {modules,[raws_ingest_app,raws_ingest_sup,raws_ingest_server,mesowest_ingest,mesowest_wisdom]},
   {registered, [raws_ingest_server]},
   {applications, [kernel,stdlib,inets,mnesia]},

@@ -1,4 +1,4 @@
--module(mesowest_ingest).
+-module(mesowest_web_ingest).
 -author("Martin Vejmelka <vejmelkam@gmail.com>").
 -export([retrieve_observations/3]).
 -include("raws_ingest.hrl").
@@ -33,7 +33,7 @@ build_download_url(StationId,{{Y,M,D},{H,_,_}},Vars) ->
   lists:flatten([
       "http://mesowest.utah.edu/cgi-bin/droman/meso_download_mesowest_ndb.cgi?product="
       "&stn=", StationId,
-      "&unit=1&time=GMT",
+      "&unit=0&time=GMT",
       "&daycalendar=1",
       "&day1=", integer_to_list(D),
       io_lib:format("&month1=~2..0B", [M]),
