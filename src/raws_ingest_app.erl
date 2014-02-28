@@ -51,7 +51,7 @@ check_timeout_mins(_) -> throw(timeout_too_small).
 
 
 read_token() ->
-  {ok,B} = file:read_file("etc/token"),
+  {ok,B} = file:read_file("etc/raws_tokens"),
   string:strip(binary_to_list(B),right,$\n).
 
 
