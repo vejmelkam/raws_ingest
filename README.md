@@ -18,7 +18,7 @@ It is simple to add support for more variables if this is needed, see how in (sr
 
 ## Using raws_ingest
 
-Use of the ````raws_ingest```` application is simple.  The configuration is stored in the .app file as follows:
+Use of the `raws_ingest` application is simple.  The configuration is stored in the .app file as follows:
 
 
     {mod,{raws_ingest_app,[["ESPC2","BAWC2","RRAC2"], [temp,fm10,rel_humidity,accum_precip], 180]}}
@@ -31,10 +31,10 @@ specified timeout.
 
 ## Storage
 
-The observations and station information retrieved from MesoWest is stored in two mnesia tables ````raws_obs```` and ````raws_station````
+The observations and station information retrieved from MesoWest is stored in two mnesia tables `raws_obs` and `raws_station`
 in the form of the respective records.
 
-Any single observation is stored as a ````#raws_obs```` record:
+Any single observation is stored as a `#raws_obs` record:
 
     -record(raws_obs,{
       timestamp :: calendar:datetime(),
@@ -43,7 +43,7 @@ Any single observation is stored as a ````#raws_obs```` record:
       value :: number(),
       variance :: number()}).
 
-where ````var_id()```` is the variable id from the table above.
+where `var_id()` is the variable id from the table above.
 
 Information about each station is stored as the record:
 
@@ -54,7 +54,7 @@ Information about each station is stored as the record:
         lon :: number(),
         elevation :: number()}).
 
-A user can of course query these tables directly or use the API provided in ````raws_ingest````.
+A user can of course query these tables directly or use the API provided in `raws_ingest`.
 
 ## Retrieving observations
 
@@ -68,7 +68,8 @@ Alternatively, to retrieve all observations stored in a rectangular lon/lat regi
 
 
     raws_ingest:retrieve_observations({From :: calendar:datetime(), To :: calendar:datetime()},
-                                      {MinLat :: number(), MaxLat :: number()},{MinLon :: number(), MaxLon :: number()})
+                                      {MinLat :: number(), MaxLat :: number()},
+                                      {MinLon :: number(), MaxLon :: number()})
 
 which will retrieve all observations acquired in this geographic region and time interval.
 
@@ -79,7 +80,7 @@ The function
 
     raws_ingest:station_info(StationId :: string())
 
-returns either a ````#raws_station```` record or ````no_such_station```` if no station with the given id exists in the mnesia table.
+returns either a `#raws_station` record or `no_such_station` if no station with the given id exists in the mnesia table.
 
 The function
 
