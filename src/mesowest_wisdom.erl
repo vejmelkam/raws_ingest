@@ -1,6 +1,6 @@
 -module(mesowest_wisdom).
 -author("Martin Vejmelka <vejmelkam@gmail.com>").
--export([classify_varname/1,varid_to_web_name/1,varid_to_json_name/1,retrieve_unit/1,xform_value/2,estimate_variance/3,is_known_var/1]).
+-export([classify_varname/1,varid_to_web_name/1,varid_to_json_name/1,varid_to_unit/1,xform_value/2,estimate_variance/3,is_known_var/1]).
 -include("raws_ingest.hrl").
 
 -ifdef(TEST).
@@ -14,7 +14,7 @@
 %% 1) make up a new atom that will identify this variable (the id)
 %% 2) add a clause to classify_varname/1 and to varid_to_web_name/1 to map its name to the id
 %% 3) if a transformation is required (to the physical unit of your choice), add a new clause to xform_value/2
-%% 4) add a clause to retrieve_unit/1 so that its clear to the user what physical unit the variable is stored in
+%% 4) add a clause to varid_to_unit/1 so that its clear to the user what physical unit the variable is stored in
 %% 5) add a clause to estimate_variance/3 that either returns your variance estimate for
 %%    a particular observation or the atom unknown if you have no idea
 %% 6) add the atom to the var_id() type in raws_ingest.hrl
@@ -64,28 +64,29 @@ varid_to_json_name(pressure) -> "pressure";
 varid_to_json_name(accum_precip) -> "precip_accum";
 varid_to_json_name(_) -> unknown.
 
--spec retrieve_unit(var_id()) -> string().
-retrieve_unit(fm10) -> "fraction";
-retrieve_unit(fuel_temp) -> "K";
-retrieve_unit(rel_humidity) -> "fraction";
-retrieve_unit(soil_temp) -> "K";
-retrieve_unit(air_temp) -> "K";
-retrieve_unit(pressure) -> "Pa";
-retrieve_unit(accum_precip) -> "mm".
+-spec varid_to_unit(var_id()) -> string().
+varid_to_unit(fm10) -> "fraction";
+varid_to_unit(fuel_temp) -> "K";
+varid_to_unit(rel_humidity) -> "fraction";
+varid_to_unit(soil_temp) -> "K";
+varid_to_unit(air_temp) -> "K";
+varid_to_unit(pressure) -> "Pa";
+varid_to_unit(accum_precip) -> "mm".
 
 
-%% The xform_value/2 function assumes that data is retrieved in METRIC units!
+%% The xform_value/2 function assumes that data is retrieved in English units!
 %% information here comes from: http://mesowest.utah.edu/cgi-bin/droman/variable_units_select.cgi?unit=1
 
 -spec xform_value(var_id(),number()) -> number().
-xform_value(air_temp,V) -> (V - 32.0) * 5.0/9.0 + 273.15;    % deg F -> deg K
-xform_value(soil_temp,V) -> (V - 32.0) * 5.0/9.0 + 273.15;   % deg F -> deg K
-xform_value(fuel_temp,V) -> (V - 32.0) * 5.0/9.0 + 273.15;   % deg F -> deg K
-xform_value(rel_humidity,V) -> 0.01 * V;                     % percent -> proportion
-xform_value(fm10,V) -> 0.01 * V;                             % g/100g -> g/1g
-xform_value(pressure,V) -> 100.0 * V;                        % mbar -> Pa
-xform_value(accum_precip,V) -> 25.4 * V;                     % inches -> mm
-xform_value(_,V) -> V.                                       % don't map any other values
+xform_value(air_temp,V) when is_number(V) -> (V - 32.0) * 5.0/9.0 + 273.15;    % Fahrenheit -> Kelvin
+xform_value(soil_temp,V) when is_number(V) -> (V - 32.0) * 5.0/9.0 + 273.15;   % Fahrenheit -> Kelvin
+xform_value(fuel_temp,V) when is_number(V) -> (V - 32.0) * 5.0/9.0 + 273.15;   % Fahrenheit -> Kelvin
+xform_value(rel_humidity,V) when is_number(V) -> 0.01 * V;                     % percent -> proportion
+xform_value(fm10,V) when is_number(V) -> 0.01 * V;                             % g/100g -> g/1g
+xform_value(pressure,V) when is_number(V) -> 100.0 * V;                        % mbar -> Pa
+xform_value(accum_precip,V) when is_number(V) -> 25.4 * V;                     % inches -> mm
+xform_value(Unknown,V) when is_number(V) -> throw({unknown_variable,Unknown,V});
+xform_value(VarId,V) -> throw({not_a_number,VarId,V}).
 
 
 %% Variances are associated with values that have been transformed via xform_value/2
