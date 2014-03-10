@@ -43,7 +43,7 @@ list_raws_in_bbox({MinLat,MaxLat},{MinLon,MaxLon},WithVars,Token) ->
     [] ->
       list_stations(Ps,Token);
     _NotEmpty ->
-      list_stations([{"vars", string:join(WithVars,",")}|Ps],Token)
+      list_stations([{"vars",string:join(lists:map(fun mesowest_wisdom:varid_to_json_name/1,WithVars),",")}|Ps],Token)
   end.
 
 
@@ -54,7 +54,7 @@ list_stations(Params,Token) ->
   {TopDict} = jiffy:decode(JSON),
   ok = check_summary(proplists:get_value(<<"SUMMARY">>,TopDict)),
   Ss = proplists:get_value(<<"STATION">>,TopDict),
-  {ok, lists:map(fun json_to_station/1, Ss)}.
+  lists:map(fun json_to_station/1, Ss).
 
 
 -spec retrieve_json(string()) -> {ok,binary()} | {error, term()}.
@@ -109,14 +109,16 @@ extract_observations({S},VarIds) ->
 
 extract_observations_for_var(VarId,StId,TS,S) ->
   Var = mesowest_wisdom:varid_to_json_name(VarId),
-  Vals = proplists:get_value(list_to_binary(Var), S),
-  case Vals of
+  case proplists:get_value(list_to_binary(Var), S) of
     undefined ->
       [];
-    _ValueList ->
-      lists:map(fun ({_,<<"null">>}) -> [];
-          ({T,V}) -> #raws_obs{station_id=StId,var_id=VarId,timestamp=T,value=mesowest_wisdom:xform_value(VarId,V),
-              variance=mesowest_wisdom:estimate_variance(StId,VarId,V)} end, lists:zip(TS,Vals))
+    Vals ->
+      lists:map(fun ({T,V}) when is_number(V) ->
+              #raws_obs{station_id=StId,var_id=VarId,timestamp=T,
+                        value=mesowest_wisdom:xform_value(VarId,V),
+                        variance=mesowest_wisdom:estimate_variance(StId,VarId,V)};
+                    ({_,_}) -> []
+                end, lists:zip(TS,Vals))
   end.
 
 
