@@ -11,9 +11,10 @@
 %% Application callbacks
 %% ===================================================================
 
-start(_StartType, Args=[_,VarIds,TimeoutMins,Method]) ->
+start(_StartType, Args=[StationSel,VarIds,TimeoutMins,Method]) ->
     init_raws_tables(),
     Token = read_token(),
+    check_station_selector(StationSel),
     true = lists:foldl(fun (X,Acc) -> mesowest_wisdom:is_known_var(X) and Acc end, true, VarIds),
     check_timeout_mins(TimeoutMins),
     check_method(Method),
@@ -26,6 +27,16 @@ stop(_State) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
+
+-spec check_station_selector(term()) -> ok.
+check_station_selector(Sel) ->
+  case raws_ingest_server:is_station_selector(Sel) of
+    true ->
+      ok;
+    false ->
+      error_logger:error_msg("Invalid stations description ~p, must be one of {station_list, Lst} or {region, {MinLat,MaxLat},{MinLon,MaxLon}}.", [Sel]),
+      throw({invalid_stations, Sel})
+  end.
 
 
 -spec init_raws_tables() -> ok.
@@ -45,17 +56,25 @@ ensure_table_exists(Name,RecFields,NdxFields) ->
       ok
   end.
 
+
 -spec check_timeout_mins(number()) -> ok.
 check_timeout_mins(T) when T >= 60 -> ok;
 check_timeout_mins(_) -> throw(timeout_too_small).
 
 
 read_token() ->
-  {ok,B} = file:read_file("etc/raws_tokens"),
-  string:strip(binary_to_list(B),right,$\n).
+  case file:read_file("etc/raws_tokens") of
+    {ok,B} ->
+      string:strip(binary_to_list(B),right,$\n);
+    {error, Reason} ->
+      error_logger:error_msg("Failed to read API token from etc/raws_tokens with reason ~p", [Reason]),
+      throw({no_token, Reason})
+  end.
 
 
 check_method(mesowest_json) -> ok;
 check_method(mesowest_web) -> ok;
-check_method(_) -> throw(unknown_method).
+check_method(_) -> 
+  error_logger:error_msg("Retrieval method must be either mesowest_json or mesowest_web."),
+  throw(unknown_method).
 

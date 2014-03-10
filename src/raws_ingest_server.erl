@@ -9,6 +9,7 @@
 
 -export([start_link/5]).
 -export([report_errors/0,clear_errors/0,update_now/0,acquire_observations/3]).
+-export([is_station_selector/1]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
