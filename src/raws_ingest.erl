@@ -28,9 +28,9 @@ update_now() ->
 
 
 -spec acquire_observations(station_selector(),[var_id()],{calendar:datetime(),calendar:datetime()}) -> ok|{error,any()}.
-acquire_observations(_SSel,_VarIds,{From,To}) when From > To ->
+acquire_observations(_SSel,_VarIds,{From,To}) when From > To and is_list(_VarIds) ->
   ok;
-acquire_observations(SSel,VarIds,{From,To}) ->
+acquire_observations(SSel,VarIds,{From,To}) when is_list(VarIds) ->
   STo = calendar:datetime_to_gregorian_seconds(To),
   SFrom = calendar:datetime_to_gregorian_seconds(From),
   case STo - SFrom > 2 * 86400 of
@@ -72,7 +72,7 @@ retrieve_observations({region, LatRng,LonRng},VarSel,{From,To}) ->
 
 
 -spec retrieve_station_info(string()) -> #raws_station{} | no_such_station.
-retrieve_station_info(StId) ->
+retrieve_station_info(StId) when is_list(StId) ->
   case mnesia:transaction(fun () -> mnesia:read({raws_station,StId}) end) of
     {atomic,[StInfo]} ->
       StInfo;
@@ -82,9 +82,9 @@ retrieve_station_info(StId) ->
 
 
 -spec retrieve_stations_in_region({number(),number()},{number(),number()}) -> [#raws_station{}].
-retrieve_stations_in_region({MinLat,MaxLat},{MinLon,MaxLon}) ->
-  case mnesia:transaction(
-    fun() ->
+retrieve_stations_in_region({MinLat,MaxLat},{MinLon,MaxLon}) when is_number(MinLat) and is_number(MaxLat)
+                                                              and is_number(MinLon) and is_number(MaxLon) ->
+  case mnesia:transaction(fun() ->
         Q = qlc:q([X || X=#raws_station{lat=Lat,lon=Lon} <- mnesia:table(raws_station),
                     Lat >= MinLat, Lat =< MaxLat, Lon >= MinLon, Lon =< MaxLon]),
         qlc:e(Q) end) of
@@ -105,3 +105,4 @@ get_var_selector_fun(all_vars) ->
   fun (_) -> true end;
 get_var_selector_fun(VarIds) when is_list(VarIds) ->
   fun (V) -> lists:member(V,VarIds) end.
+
