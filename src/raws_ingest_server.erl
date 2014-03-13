@@ -38,7 +38,7 @@ update_now() ->
 -spec acquire_observations(station_selector(),[atom()],{calendar:datetime(),calendar:datetime()}) -> ok|{error,any()}.
 acquire_observations(SSel,VarIds,{From,To}) ->
   true = is_station_selector(SSel),
-  gen_server:call(?SERVER,{acquire_observations,SSel,VarIds,From,To},15000).
+  gen_server:call(?SERVER,{acquire_observations,SSel,VarIds,From,To},30000).
 
 
 %% ------------------------------------------------------------------
@@ -50,7 +50,7 @@ init(Args) ->
     {ok, Args}.
 
 
-handle_call(Request, _From, State=[Token,StationSel0,VarIds,TimeoutMins,_UpdateFrom,Method,Errors]) ->
+handle_call(Request, _From, State=[Token,StationSel0,VarIds,TimeoutMins,UpdateFrom,Method,Errors]) ->
   case Request of
     {acquire_observations,StationSelR,VarIdsR,From,To} ->
       case resolve_station_selector(StationSelR,VarIdsR,Token) of
@@ -64,7 +64,6 @@ handle_call(Request, _From, State=[Token,StationSel0,VarIds,TimeoutMins,_UpdateF
               {reply, {error, NewErrors}, State}
           end;
         _ ->
-          error_logger:error_msg("Unable to resolve station selector ~p.",[StationSelR]),
           {reply, {error, io_lib:format("Unable to resolve station selector ~p.",[StationSelR])}, State}
       end;
     update_now ->
@@ -73,7 +72,7 @@ handle_call(Request, _From, State=[Token,StationSel0,VarIds,TimeoutMins,_UpdateF
     report_errors ->
       {reply, Errors, State};
     clear_errors ->
-      {reply, ok, [Token,StationSel0,VarIds,TimeoutMins,Method,[]]}
+      {reply, ok, [Token,StationSel0,VarIds,TimeoutMins,UpdateFrom,Method,[]]}
   end.
 
 
@@ -127,7 +126,7 @@ resolve_station_selector(Sel={region, {MinLat,MaxLat}, {MinLon,MaxLon}}, VarIds,
     Ids = lists:map(fun (#raws_station{id=Id}) -> Id end, StationInfos),
     {station_list, Ids}
   catch Bdy:Exc ->
-    error_logger:error_msg("Failed to resolve station selection ~p due to exception~n~p (bdy ~p)", [Sel,Bdy,Exc]),
+    error_logger:error_msg("Failed to resolve station selector ~p due to exception~n~p (bdy ~p)~nstacktrace:~p~n", [Sel,Bdy,Exc,erlang:get_stacktrace()]),
     Sel
   end.
 
