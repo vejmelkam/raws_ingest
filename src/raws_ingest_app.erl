@@ -42,7 +42,7 @@ check_station_selector(Sel) ->
 -spec init_raws_tables() -> ok.
 init_raws_tables() ->
   ensure_table_exists(raws_station,record_info(fields,raws_station),[lat,lon]),
-  ensure_table_exists(raws_obs,record_info(fields,raws_obs),[station_id,var_id]),
+  ensure_table_exists(raws_obs,record_info(fields,raws_obs),[]),
   ok.
 
 

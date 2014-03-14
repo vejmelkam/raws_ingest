@@ -99,7 +99,6 @@ retrieve_stations_in_region({MinLat,MaxLat},{MinLon,MaxLon}) when is_number(MinL
 %% Internal functions
 %%-------------------------------------------------
 
-
 -spec get_var_selector_fun(var_selector()) -> fun((var_id()) -> boolean()).
 get_var_selector_fun(all_vars) ->
   fun (_) -> true end;
