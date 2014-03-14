@@ -92,13 +92,14 @@ xform_value(VarId,V) -> throw({not_a_number,VarId,V}).
 %% Variances are associated with values that have been transformed via xform_value/2
 -spec estimate_variance(string(),var_id(),number()) -> number().
 
-% this estimate from values included from a manual Craig Clements sent by e-mail for his RAWS
-% hopefully this valid for the same type of sensor in different RAWS?
+% this estimate from values included from a manual to the CS506 fuel stick sensor
+% hopefully this is not too far off other sensor types but that's unclear at this point.
+% The values given in the manual were error bounds for 90% of the values, which we estimated as 4*sigma (approx. normal)
 % between-RAWS varability is not clear
-estimate_variance(_StId,fm10,V) when V < 0.1 -> 0.0001;
-estimate_variance(_StId,fm10,V) when V < 0.2 -> 0.0004;
-estimate_variance(_StId,fm10,V) when V < 0.3 -> 0.0009;
-estimate_variance(_StId,fm10,_V) -> 0.0016;
+estimate_variance(_StId,fm10,V) when V < 0.1 -> (0.0125/4)*(0.0125/4);
+estimate_variance(_StId,fm10,V) when V < 0.2 -> (0.02/4)*(0.02/4);
+estimate_variance(_StId,fm10,V) when V < 0.3 -> (0.034/4)*(0.034/4);
+estimate_variance(_StId,fm10,_V) -> (0.041/4)*(0.041/4);
 
 % best guess at variance of sensor observations that seems reasonable [more like subjective belief at this point]
 estimate_variance(_StId,air_temp,_V) -> 0.04;
