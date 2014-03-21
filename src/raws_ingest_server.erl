@@ -8,8 +8,8 @@
 %% ------------------------------------------------------------------
 
 -export([start_link/5]).
--export([report_errors/0,clear_errors/0,update_now/0,acquire_observations/3]).
--export([is_station_selector/1]).
+-export([report_errors/0,clear_errors/0,update_now/0,acquire_observations/4]).
+-export([is_station_selector/1,acquire_stations_in_region/3]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -35,10 +35,18 @@ clear_errors() ->
 update_now() ->
   gen_server:call(?SERVER,update_now).
 
--spec acquire_observations(station_selector(),[atom()],{calendar:datetime(),calendar:datetime()}) -> ok|{error,any()}.
-acquire_observations(SSel,VarIds,{From,To}) ->
+-spec acquire_observations(station_selector(),[atom()],{calendar:datetime(),calendar:datetime()},pos_integer()) -> [#raws_obs{}]|{error,any()}.
+acquire_observations(SSel,VarIds,{From,To},TimeoutS) ->
   true = is_station_selector(SSel),
-  gen_server:call(?SERVER,{acquire_observations,SSel,VarIds,From,To},30000).
+  gen_server:call(?SERVER,{acquire_observations,SSel,VarIds,From,To},TimeoutS*1000).
+
+
+acquire_stations_in_region(LatRng={MinLat,MaxLat},LonRng={MinLon,MaxLon},WithVars)
+    when is_number(MinLat) and is_number(MaxLat)
+    and  is_number(MinLon) and is_number(MaxLon)
+    and  is_list(WithVars) ->
+  gen_server:call(?SERVER,{acquire_stations_in_bbox,LatRng,LonRng,WithVars},120000).
+
 
 
 %% ------------------------------------------------------------------
@@ -52,14 +60,16 @@ init(Args) ->
 
 handle_call(Request, _From, State=[Token,StationSel0,VarIds,TimeoutMins,UpdateFrom,Method,Errors]) ->
   case Request of
+    {acquire_stations_in_bbox,LatRng,LonRng,WithVars} ->
+      {reply, safe_acquire_stations_in_bbox(LatRng,LonRng,WithVars,Token), State};
     {acquire_observations,StationSelR,VarIdsR,From,To} ->
-      case resolve_station_selector(StationSelR,VarIdsR,Token) of
+      case raws_ingest:resolve_station_selector(StationSelR) of
         {station_list, StationIds} ->
-          case safe_retrieve_observations(Method,Token,From,To,StationIds,VarIdsR) of
+          case safe_acquire_observations(Method,Token,From,To,StationIds,VarIdsR) of
             {[], StInfos, Obss} ->
               store_station_infos(StInfos),
               store_observations(Obss),
-              {reply, ok, State};
+              {reply, Obss, State};
             {NewErrors,_,_} ->
               {reply, {error, NewErrors}, State}
           end;
@@ -98,10 +108,10 @@ code_change(_OldVsn, State, _Extra) ->
 
 update_observations_now([Token,StationSel0,VarIds,_TimeoutMins,UpdateFrom,Method,_Errors]) ->
   TimeNow = calendar:universal_time(),
-  StationSel = resolve_station_selector(StationSel0, VarIds, Token),
+  StationSel = raws_ingest:resolve_station_selector(StationSel0),
   case StationSel of
     {station_list, StationIds} ->
-      {NewErrors,StationInfos,Obs} = safe_retrieve_observations(Method,Token,UpdateFrom,TimeNow,StationIds,VarIds),
+      {NewErrors,StationInfos,Obs} = safe_acquire_observations(Method,Token,UpdateFrom,TimeNow,StationIds,VarIds),
       store_station_infos(StationInfos),
       store_observations(Obs),
       case NewErrors of
@@ -116,25 +126,25 @@ update_observations_now([Token,StationSel0,VarIds,_TimeoutMins,UpdateFrom,Method
       {[{error,StationSel,TimeNow,unresolved_stations,"Could not resolve stations from region."}],UpdateFrom,StationSel}
   end.
 
-
--spec resolve_station_selector(station_selector(),[var_id()],string()) -> station_selector().
-resolve_station_selector({station_list, Lst}, _, _) ->
-  {station_list, Lst};
-resolve_station_selector(Sel={region, {MinLat,MaxLat}, {MinLon,MaxLon}}, VarIds, Token) ->
+-spec safe_acquire_stations_in_bbox({number(),number()},{number(),number()},[var_id()],string()) -> [#raws_station{}].
+safe_acquire_stations_in_bbox(LatRng={MinLat,MaxLat},LonRng={MinLon,MaxLon},WithVars,Token) ->
   try
-    StationInfos = mesowest_json_ingest:list_raws_in_bbox({MinLat,MaxLat},{MinLon,MaxLon},VarIds,Token),
-    Ids = lists:map(fun (#raws_station{id=Id}) -> Id end, StationInfos),
-    {station_list, Ids}
+    S = mesowest_json_ingest:find_stations_in_bbox(LatRng,LonRng,WithVars,Token),
+    store_station_infos(S),
+    S
   catch Bdy:Exc ->
-    error_logger:error_msg("Failed to resolve station selector ~p due to exception~n~p (bdy ~p)~nstacktrace:~p~n", [Sel,Bdy,Exc,erlang:get_stacktrace()]),
-    Sel
-  end.
+    error_logger:error_msg("Failed to find stations in bbox [~p,~p], [~p,~p]~nstacktrace:~p~n", [MinLat,MaxLat,MinLon,MaxLon,erlang:get_stacktrace()]),
+    {error, Bdy, Exc}
+end.
+
 
 -spec is_station_selector(any()) -> boolean().
 is_station_selector({station_list,Lst}) when is_list(Lst) ->
   true;
 is_station_selector({region,{MinLat,MaxLat},{MinLon,MaxLon}}) when is_number(MinLat) and is_number(MaxLat)
                                                                and is_number(MinLon) and is_number(MaxLon) ->
+  true;
+is_station_selector({station_file,Path}) when is_list(Path) ->
   true;
 is_station_selector(_) ->
   false.
@@ -146,7 +156,7 @@ store_station_infos(StInfos) ->
 store_observations(Obs) ->
   mnesia:transaction(fun () -> lists:map(fun mnesia:write/1, Obs) end).
 
-safe_retrieve_observations(mesowest_json,Token,From,To,Sts,VarIds) ->
+safe_acquire_observations(mesowest_json,Token,From,To,Sts,VarIds) ->
   try
     {StInfos,Obss} = mesowest_json_ingest:retrieve_observations(From,To,Sts,VarIds,Token),
     {[],StInfos,Obss}
@@ -155,7 +165,7 @@ safe_retrieve_observations(mesowest_json,Token,From,To,Sts,VarIds) ->
                            [Cls,Exc,Sts,From,To,VarIds,erlang:get_stacktrace()]),
     {[{error,Sts,calendar:local_time(),Cls,Exc}], [], []}
   end;
-safe_retrieve_observations(mesowest_web,_Token,_From,To,Sts,VarIds) ->
+safe_acquire_observations(mesowest_web,_Token,_From,To,Sts,VarIds) ->
   Report = lists:map(fun (S) ->
         try
           {StInfo,Obs} = mesowest_ingest:retrieve_observations(S,To,VarIds),
