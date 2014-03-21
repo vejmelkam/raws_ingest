@@ -12,7 +12,7 @@
 %% To add a new variable
 %%
 %% 1) make up a new atom that will identify this variable (the id)
-%% 2) add a clause to classify_varname/1 and to varid_to_web_name/1 to map its name to the id
+%% 2) add a clause to classify_varname/1, varid_to_web_name/1 and varid_to_json_name/1 to map its name to the id
 %% 3) if a transformation is required (to the physical unit of your choice), add a new clause to xform_value/2
 %% 4) add a clause to varid_to_unit/1 so that its clear to the user what physical unit the variable is stored in
 %% 5) add a clause to estimate_variance/3 that either returns your variance estimate for
@@ -42,6 +42,12 @@ classify_varname("PRES") -> pressure;
 classify_varname("pressure") -> pressure;
 classify_varname("PREC") -> accum_precip;
 classify_varname("precip_accum") -> accum_precip;
+classify_varname("GUST") -> wind_gust;
+classify_varname("wind_gust") -> wind_gust;
+classify_varname("SKNT") -> wind_speed;
+classify_varname("wind_speed") -> wind_speed;
+classify_varname("DRCT") -> wind_dir;
+classify_varname("wind_direction") -> wind_dir;
 classify_varname(_X) -> unknown.
 
 -spec varid_to_web_name(var_id()) -> string().
@@ -52,6 +58,9 @@ varid_to_web_name(rel_humidity) -> "RELH";
 varid_to_web_name(soil_temp) -> "TSOI";
 varid_to_web_name(pressure) -> "PRES";
 varid_to_web_name(accum_precip) -> "PREC";
+varid_to_web_name(wind_gust) -> "GUST";
+varid_to_web_name(wind_speed) -> "SKNT";
+varid_to_web_name(wind_dir) -> "DRCT";
 varid_to_web_name(_) -> unknown.
 
 -spec varid_to_json_name(var_id()) -> string().
@@ -62,6 +71,9 @@ varid_to_json_name(rel_humidity) -> "relative_humidity";
 varid_to_json_name(soil_temp) -> "soil_temp";
 varid_to_json_name(pressure) -> "pressure";
 varid_to_json_name(accum_precip) -> "precip_accum";
+varid_to_json_name(wind_gust) -> "wind_gust";
+varid_to_json_name(wind_speed) -> "wind_speed";
+varid_to_json_name(wind_dir) -> "wind_direction";
 varid_to_json_name(_) -> unknown.
 
 -spec varid_to_unit(var_id()) -> string().
@@ -71,7 +83,10 @@ varid_to_unit(rel_humidity) -> "fraction";
 varid_to_unit(soil_temp) -> "K";
 varid_to_unit(air_temp) -> "K";
 varid_to_unit(pressure) -> "Pa";
-varid_to_unit(accum_precip) -> "mm".
+varid_to_unit(accum_precip) -> "mm";
+varid_to_unit(wind_gust) -> "m/s";
+varid_to_unit(wind_dir) -> "degrees";
+varid_to_unit(wind_speed) -> "m/s".
 
 
 %% The xform_value/2 function assumes that data is retrieved in English units!
@@ -85,6 +100,9 @@ xform_value(rel_humidity,V) when is_number(V) -> 0.01 * V;                     %
 xform_value(fm10,V) when is_number(V) -> 0.01 * V;                             % g/100g -> g/1g
 xform_value(pressure,V) when is_number(V) -> 100.0 * V;                        % mbar -> Pa
 xform_value(accum_precip,V) when is_number(V) -> 25.4 * V;                     % inches -> mm
+xform_value(wind_gust,V) when is_number(V) -> 0.5144 * V;                      % knots -> m/s
+xform_value(wind_speed,V) when is_number(V) -> 0.5144 * V;                     % inches -> mm
+xform_value(wind_dir,V) when is_number(V) -> V;                                % degrees -> degrees
 xform_value(Unknown,V) when is_number(V) -> throw({unknown_variable,Unknown,V});
 xform_value(VarId,V) -> throw({not_a_number,VarId,V}).
 
@@ -107,7 +125,10 @@ estimate_variance(_StId,rel_humidity,_V) -> 0.04;
 estimate_variance(_StId,soil_temp,_V) -> 0.25;
 
 % in this section, I simply have no idea what the variance is
-estimate_variance(_StId,accum_precip,_V) -> unknown.
+estimate_variance(_StId,accum_precip,_V) -> unknown;
+estimate_variance(_StId,wind_gust,_V) -> unknown;
+estimate_variance(_StId,wind_speed,_V) -> unknown;
+estimate_variance(_StId,wind_dir,_V) -> unknown.
 
 -ifdef(TEST).
 -endif.
