@@ -1,7 +1,7 @@
 
 -module(mesowest_json_ingest).
 -author("Martin Vejmelka <vejmelkam@gmail.com>").
--export([list_stations/2,list_raws_in_bbox/4,retrieve_observations/5,retrieve_variables/1]).
+-export([find_stations_in_bbox/4,retrieve_observations/5,retrieve_variables/1]).
 
 -include("raws_ingest.hrl").
 
@@ -35,8 +35,8 @@ to_timestamp({{Y,M,D},{H,Min,_}}) ->
   io_lib:format("~4..0B~2..0B~2..0B~2..0B~2..0B", [Y,M,D,H,Min]).
 
 
--spec list_raws_in_bbox({number(),number()},{number(),number()},[string()],string()) -> [#raws_station{}].
-list_raws_in_bbox({MinLat,MaxLat},{MinLon,MaxLon},WithVars,Token) ->
+-spec find_stations_in_bbox({number(),number()},{number(),number()},[string()],string()) -> [#raws_station{}].
+find_stations_in_bbox({MinLat,MaxLat},{MinLon,MaxLon},WithVars,Token) ->
   Ps = [{"network", "2"},
        {"bbox", io_lib:format("~p,~p,~p,~p", [MinLon,MinLat,MaxLon,MaxLat])}],
   case WithVars of
@@ -52,9 +52,14 @@ list_stations(Params,Token) ->
   URL = build_url("http://api.mesowest.net/stations", [{"token",Token}|Params]),
   {ok, JSON} = retrieve_json(URL),
   {TopDict} = jiffy:decode(JSON),
+  io:format("~p~n",[TopDict]),
   ok = check_summary(proplists:get_value(<<"SUMMARY">>,TopDict)),
-  Ss = proplists:get_value(<<"STATION">>,TopDict),
-  lists:map(fun json_to_station/1, Ss).
+  case proplists:get_value(<<"STATION">>,TopDict) of
+    undefined ->
+      [];
+    Ss ->
+      lists:map(fun json_to_station/1, Ss)
+  end.
 
 
 -spec retrieve_json(string()) -> {ok,binary()} | {error, term()}.
