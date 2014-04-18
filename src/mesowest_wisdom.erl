@@ -13,7 +13,7 @@
 %%
 %% 1) make up a new atom that will identify this variable (the id)
 %% 2) add a clause to classify_varname/1, varid_to_web_name/1 and varid_to_json_name/1 to map its name to the id
-%% 3) if a transformation is required (to the physical unit of your choice), add a new clause to xform_value/2
+%% 3) add a new clause to xform_value/2 to possibly transform units
 %% 4) add a clause to varid_to_unit/1 so that its clear to the user what physical unit the variable is stored in
 %% 5) add a clause to estimate_variance/3 that either returns your variance estimate for
 %%    a particular observation or the atom unknown if you have no idea
@@ -48,6 +48,8 @@ classify_varname("SKNT") -> wind_speed;
 classify_varname("wind_speed") -> wind_speed;
 classify_varname("DRCT") -> wind_dir;
 classify_varname("wind_direction") -> wind_dir;
+classify_varname("SOLR") -> solar_rad;
+classify_varname("solar_radiation") -> solar_rad;
 classify_varname(_X) -> unknown.
 
 -spec varid_to_web_name(var_id()) -> string().
@@ -61,6 +63,7 @@ varid_to_web_name(accum_precip) -> "PREC";
 varid_to_web_name(wind_gust) -> "GUST";
 varid_to_web_name(wind_speed) -> "SKNT";
 varid_to_web_name(wind_dir) -> "DRCT";
+varid_to_web_name(solar_rad) -> "SOLR";
 varid_to_web_name(_) -> unknown.
 
 -spec varid_to_json_name(var_id()) -> string().
@@ -74,6 +77,7 @@ varid_to_json_name(accum_precip) -> "precip_accum";
 varid_to_json_name(wind_gust) -> "wind_gust";
 varid_to_json_name(wind_speed) -> "wind_speed";
 varid_to_json_name(wind_dir) -> "wind_direction";
+varid_to_json_name(solar_rad) -> "solar_radiation";
 varid_to_json_name(_) -> unknown.
 
 -spec varid_to_unit(var_id()) -> string().
@@ -86,7 +90,8 @@ varid_to_unit(pressure) -> "Pa";
 varid_to_unit(accum_precip) -> "mm";
 varid_to_unit(wind_gust) -> "m/s";
 varid_to_unit(wind_dir) -> "degrees";
-varid_to_unit(wind_speed) -> "m/s".
+varid_to_unit(wind_speed) -> "m/s";
+varid_to_unit(solar_rad) -> "Wm^-2".
 
 
 %% The xform_value/2 function assumes that data is retrieved in English units!
@@ -103,6 +108,7 @@ xform_value(accum_precip,V) when is_number(V) -> 25.4 * V;                     %
 xform_value(wind_gust,V) when is_number(V) -> 0.5144 * V;                      % knots -> m/s
 xform_value(wind_speed,V) when is_number(V) -> 0.5144 * V;                     % inches -> mm
 xform_value(wind_dir,V) when is_number(V) -> V;                                % degrees -> degrees
+xform_value(solar_rad,V) when is_number(V) -> V;                               % W*m^-2 -> W*m^-2
 xform_value(Unknown,V) when is_number(V) -> throw({unknown_variable,Unknown,V});
 xform_value(VarId,V) -> throw({not_a_number,VarId,V}).
 
@@ -128,7 +134,8 @@ estimate_variance(_StId,soil_temp,_V) -> 0.25;
 estimate_variance(_StId,accum_precip,_V) -> unknown;
 estimate_variance(_StId,wind_gust,_V) -> unknown;
 estimate_variance(_StId,wind_speed,_V) -> unknown;
-estimate_variance(_StId,wind_dir,_V) -> unknown.
+estimate_variance(_StId,wind_dir,_V) -> unknown;
+estimate_variance(_StId,solar_rad,_V) -> unknown.
 
 -ifdef(TEST).
 -endif.
