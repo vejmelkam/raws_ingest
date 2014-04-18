@@ -131,11 +131,47 @@ safe_acquire_stations_in_bbox(LatRng={MinLat,MaxLat},LonRng={MinLon,MaxLon},With
   try
     S = mesowest_json_ingest:find_stations_in_bbox(LatRng,LonRng,WithVars,Token),
     store_station_infos(S),
+    error_logger:info_msg("raws_ingest_server: acquired ~p stations in bbox ~p-~p lat, ~p-~p lon.~n",
+      [length(S),MinLat,MaxLat,MinLon,MaxLon]),
     S
   catch Bdy:Exc ->
-    error_logger:error_msg("Failed to find stations in bbox [~p,~p], [~p,~p]~nstacktrace:~p~n", [MinLat,MaxLat,MinLon,MaxLon,erlang:get_stacktrace()]),
+    error_logger:error_msg("Failed to find stations in bbox [~p,~p], [~p,~p]~nstacktrace:~p.~n", [MinLat,MaxLat,MinLon,MaxLon,erlang:get_stacktrace()]),
     {error, Bdy, Exc}
 end.
+
+
+store_station_infos(StInfos) ->
+  mnesia:transaction(fun () -> lists:map(fun mnesia:write/1, StInfos) end).
+
+store_observations(Obs) ->
+  mnesia:transaction(fun () -> lists:map(fun mnesia:write/1, Obs) end).
+
+safe_acquire_observations(mesowest_json,Token,From,To,Sts,VarIds) ->
+  try
+    {StInfos,Obss} = mesowest_json_ingest:retrieve_observations(From,To,Sts,VarIds,Token),
+    error_logger:info_msg("raws_ingest_server: acquired ~p observations from ~p stations in interval [~p <-> ~p] via MesoWest/JSON.~n",
+      [length(Obss),length(StInfos),to_esmf(From),to_esmf(To)]),
+    {[],StInfos,Obss}
+  catch Cls:Exc ->
+    error_logger:error_msg("raws_ingest_server encountered exception ~p:~p in retrieve_observations for stations~n~p from ~w to ~w for vars ~w~nstacktrace: ~p.~n",
+                           [Cls,Exc,Sts,From,To,VarIds,erlang:get_stacktrace()]),
+    {[{error,Sts,calendar:local_time(),Cls,Exc}], [], []}
+  end;
+safe_acquire_observations(mesowest_web,_Token,_From,To,Sts,VarIds) ->
+  Report = lists:map(fun (S) ->
+        try
+          {StInfo,Obs} = mesowest_ingest:retrieve_observations(S,To,VarIds),
+          error_logger:info_msg("raws_ingest_server: acquired ~p observations from ~p stations via MesoWest/Web.~n",
+            [length(Obs),length(StInfo)]),
+          {ok,StInfo,Obs}
+        catch Cls:Exc ->
+          error_logger:error_msg("raws_ingest_server encountered exception ~p:~p in retrieve_observations for stations ~w at GMT time ~w for vars ~w~nstacktrace: ~p~n",
+            [Cls,Exc,S,To,VarIds,erlang:get_stacktrace()]),
+          {error,S,calendar:local_time(),Cls,Exc}
+        end end, Sts),
+  {Oks,Errors} = lists:partition(fun ({ok,_,_}) -> true; (_) -> false end, Report),
+  {_,StInfos,Obss} = lists:unzip3(Oks),
+  {Errors,StInfos,lists:flatten(Obss)}.
 
 
 -spec is_station_selector(any()) -> boolean().
@@ -150,33 +186,6 @@ is_station_selector(_) ->
   false.
 
 
-store_station_infos(StInfos) ->
-  mnesia:transaction(fun () -> lists:map(fun mnesia:write/1, StInfos) end).
-
-store_observations(Obs) ->
-  mnesia:transaction(fun () -> lists:map(fun mnesia:write/1, Obs) end).
-
-safe_acquire_observations(mesowest_json,Token,From,To,Sts,VarIds) ->
-  try
-    {StInfos,Obss} = mesowest_json_ingest:retrieve_observations(From,To,Sts,VarIds,Token),
-    {[],StInfos,Obss}
-  catch Cls:Exc ->
-    error_logger:error_msg("raws_ingest_server encountered exception ~p:~p in retrieve_observations for stations ~p from ~w to ~w for vars ~w~nstacktrace: ~p",
-                           [Cls,Exc,Sts,From,To,VarIds,erlang:get_stacktrace()]),
-    {[{error,Sts,calendar:local_time(),Cls,Exc}], [], []}
-  end;
-safe_acquire_observations(mesowest_web,_Token,_From,To,Sts,VarIds) ->
-  Report = lists:map(fun (S) ->
-        try
-          {StInfo,Obs} = mesowest_ingest:retrieve_observations(S,To,VarIds),
-          {ok,StInfo,Obs}
-        catch Cls:Exc ->
-          error_logger:error_msg("raws_ingest_server encountered exception ~p:~p in retrieve_observations for stations ~w at GMT time ~w for vars ~w~nstacktrace: ~p",
-            [Cls,Exc,S,To,VarIds,erlang:get_stacktrace()]),
-          {error,S,calendar:local_time(),Cls,Exc}
-        end end, Sts),
-  {Oks,Errors} = lists:partition(fun ({ok,_,_}) -> true; (_) -> false end, Report),
-  {_,StInfos,Obss} = lists:unzip3(Oks),
-  {Errors,StInfos,lists:flatten(Obss)}.
-
+to_esmf({{Y,M,D},{H,Min,S}}) ->
+  lists:flatten(io_lib:format("~4..0B~2..0B~2..0B_~2..0B~2..0B~2..0B", [Y,M,D,H,Min,S])).
 

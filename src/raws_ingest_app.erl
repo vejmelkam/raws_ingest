@@ -34,7 +34,7 @@ check_station_selector(Sel) ->
     true ->
       ok;
     false ->
-      error_logger:error_msg("Invalid stations description ~p, must be one of {station_list, Lst} or {region, {MinLat,MaxLat},{MinLon,MaxLon}}.", [Sel]),
+      error_logger:error_msg("Invalid stations description ~p, must be one of {station_list, Lst} or {region, {MinLat,MaxLat},{MinLon,MaxLon}}.~n", [Sel]),
       throw({invalid_stations, Sel})
   end.
 
@@ -67,7 +67,7 @@ read_token() ->
     {ok,B} ->
       string:strip(binary_to_list(B),right,$\n);
     {error, Reason} ->
-      error_logger:error_msg("Failed to read API token from etc/raws_tokens with reason ~p", [Reason]),
+      error_logger:error_msg("Failed to read API token from etc/raws_tokens with reason ~p.~n", [Reason]),
       throw({no_token, Reason})
   end.
 
@@ -75,6 +75,6 @@ read_token() ->
 check_method(mesowest_json) -> ok;
 check_method(mesowest_web) -> ok;
 check_method(_) -> 
-  error_logger:error_msg("Retrieval method must be either mesowest_json or mesowest_web."),
+  error_logger:error_msg("Retrieval method must be either mesowest_json or mesowest_web.~n"),
   throw(unknown_method).
 

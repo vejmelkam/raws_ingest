@@ -8,7 +8,7 @@
 -include("raws_ingest.hrl").
 -include_lib("stdlib/include/qlc.hrl").
 
--define(MAX_ACQ_INTERVAL,86400).
+-define(MAX_ACQ_INTERVAL,43200).
 
 
 start() ->
