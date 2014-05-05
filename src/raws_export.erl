@@ -13,8 +13,8 @@ station_to_csv_string(#raws_station{lat=Lat,lon=Lon,elevation=E}) ->
 obs_to_csv_string([],_,Lines) ->
   string:join(lists:reverse(Lines),"\n");
 obs_to_csv_string([O|Rest],Sep,Lines) ->
-  #raws_obs{timestamp={{Y,M,D},{H,Min,S}},value=Val,variance=Var} = O,
-  StrList = lists:map(fun item_to_list/1, [Y,M,D,H,Min,S,Val,Var]),
+  #raws_obs{timestamp={{Y,M,D},{H,Min,S}},lat=Lat,lon=Lon,value=Val,variance=Var} = O,
+  StrList = lists:map(fun item_to_list/1, [Y,M,D,H,Min,S,Lat,Lon,Val,Var]),
   obs_to_csv_string(Rest,Sep,[lists:flatten(string:join(StrList, Sep))|Lines]).
 
 obs_to_csv(Obss,Sep,Path) ->

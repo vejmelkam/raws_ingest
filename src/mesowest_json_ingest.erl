@@ -26,9 +26,8 @@ retrieve_observations(From,To,StationIds,VarIds,Token) ->
   {JSON} = jiffy:decode(JSONStr),
   ok = check_summary(proplists:get_value(<<"SUMMARY">>,JSON)),
   Stations = proplists:get_value(<<"STATION">>,JSON),
-  StInfo = lists:map(fun json_to_station/1, Stations),
-  Obss = lists:flatten(lists:map(fun (S) -> extract_observations(S,VarIds) end,Stations)),
-  {StInfo,Obss}.
+  {StInfo,Obss} = lists:unzip(lists:map(fun (S) -> extract_observations(S,VarIds) end,Stations)),
+  {StInfo,lists:flatten(Obss)}.
 
 
 to_timestamp({{Y,M,D},{H,Min,_}}) ->
@@ -106,20 +105,21 @@ binary_to_number(B) when is_binary(B) ->
 
 
 extract_observations({S},VarIds) ->
-  StId = binary_to_list(proplists:get_value(<<"STID">>, S)),
+  StInfo = json_to_station({S}),
+  #raws_station{id=StId,lon=Lon,lat=Lat} = StInfo,
   {Obss} = proplists:get_value(<<"OBSERVATIONS">>,S),
   TS = lists:map(fun decode_datetime/1,proplists:get_value(<<"date_time">>,Obss)),
-  lists:map(fun(VarId) -> extract_observations_for_var(VarId,StId,TS,Obss) end, VarIds).
+  {StInfo,lists:map(fun(VarId) -> extract_observations_for_var(VarId,StId,Lat,Lon,TS,Obss) end, VarIds)}.
 
 
-extract_observations_for_var(VarId,StId,TS,S) ->
+extract_observations_for_var(VarId,StId,Lat,Lon,TS,S) ->
   Var = mesowest_wisdom:varid_to_json_name(VarId),
   case proplists:get_value(list_to_binary(Var), S) of
     undefined ->
       [];
     Vals ->
       lists:map(fun ({T,V}) when is_number(V) ->
-              #raws_obs{station_id=StId,var_id=VarId,timestamp=T,
+              #raws_obs{station_id=StId,lat=Lat,lon=Lon,var_id=VarId,timestamp=T,
                         value=mesowest_wisdom:xform_value(VarId,V),
                         variance=mesowest_wisdom:estimate_variance(StId,VarId,V)};
                     ({_,_}) -> []
@@ -136,6 +136,7 @@ json_to_var({VarNameB,{Info}}) ->
   FullName = binary_to_list(proplists:get_value(<<"long_name">>,Info)),
   Units = binary_to_list(proplists:get_value(<<"unit">>,Info)),
   #raws_var{id=binary_to_list(VarNameB),full_name=FullName,units=Units}.
+
 
 check_summary({S}) ->
   case proplists:get_value(<<"RESPONSE_CODE">>, S) of

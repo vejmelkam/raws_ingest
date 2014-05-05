@@ -6,6 +6,8 @@
 -record(raws_obs,{
   timestamp :: calendar:datetime(),  % always in GMT
   station_id :: string(),
+  lat :: number(),
+  lon :: number(),
   var_id :: var_id(),
   value :: number(),
   variance :: number()}).
@@ -14,7 +16,7 @@
 -record(raws_station,{
     id :: string(),
     name :: string(),
-    lat :: number(),
+    lat :: number(),   % note: lat/lon are only the CURRENT position (some RAWS are portable)
     lon :: number(),
     elevation :: number()}).
 
