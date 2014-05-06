@@ -1,7 +1,7 @@
 -module(raws_ingest).
 -author("Martin Vejmelka <vejmelkam@gmail.com>").
 -export([start/0]).
--export([report_errors/0,clear_errors/0,update_now/0]).
+-export([report_errors/0,clear_errors/0,update_now/1]).
 -export([retrieve_station_info/1,retrieve_station_infos/1,resolve_station_selector/1]).
 -export([retrieve_stations_in_region/2,acquire_stations_in_region/3]).
 -export([retrieve_observations/3,acquire_observations/4]).
@@ -28,9 +28,9 @@ clear_errors() ->
   raws_ingest_server:clear_errors().
 
 
--spec update_now() -> ok.
-update_now() ->
-  raws_ingest_server:update_now().
+-spec update_now(non_neg_integer()) -> ok.
+update_now(TimeoutS) ->
+  raws_ingest_server:update_now(TimeoutS).
 
 
 -spec resolve_station_selector(station_selector()) -> station_selector().
@@ -146,4 +146,3 @@ get_var_selector_fun(all_vars) ->
   fun (_) -> true end;
 get_var_selector_fun(VarIds) when is_list(VarIds) ->
   fun (V) -> lists:member(V,VarIds) end.
-

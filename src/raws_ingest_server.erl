@@ -8,7 +8,7 @@
 %% ------------------------------------------------------------------
 
 -export([start_link/5]).
--export([report_errors/0,clear_errors/0,update_now/0,acquire_observations/4]).
+-export([report_errors/0,clear_errors/0,update_now/1,acquire_observations/4]).
 -export([is_station_selector/1,acquire_stations_in_region/3]).
 
 %% ------------------------------------------------------------------
@@ -32,8 +32,8 @@ report_errors() ->
 clear_errors() ->
   gen_server:call(?SERVER,clear_errors).
 
-update_now() ->
-  gen_server:call(?SERVER,update_now).
+update_now(TimeoutS) ->
+  gen_server:call(?SERVER,update_now,TimeoutS * 1000).
 
 -spec acquire_observations(station_selector(),[atom()],{calendar:datetime(),calendar:datetime()},pos_integer()) -> [#raws_obs{}]|{error,any()}.
 acquire_observations(SSel,VarIds,{From,To},TimeoutS) ->
@@ -188,4 +188,3 @@ is_station_selector(_) ->
 
 to_esmf({{Y,M,D},{H,Min,S}}) ->
   lists:flatten(io_lib:format("~4..0B~2..0B~2..0B_~2..0B~2..0B~2..0B", [Y,M,D,H,Min,S])).
-
