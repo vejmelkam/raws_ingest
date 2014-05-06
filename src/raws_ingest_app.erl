@@ -58,7 +58,7 @@ ensure_table_exists(Name,RecFields,NdxFields,Type) ->
 
 
 -spec check_timeout_mins(number()) -> ok.
-check_timeout_mins(T) when T >= 60 -> ok;
+check_timeout_mins(T) when T >= 15 -> ok;
 check_timeout_mins(_) -> throw(timeout_too_small).
 
 
