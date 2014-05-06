@@ -36,8 +36,8 @@ to_timestamp({{Y,M,D},{H,Min,_}}) ->
 
 -spec find_stations_in_bbox({number(),number()},{number(),number()},[string()],string()) -> [#raws_station{}].
 find_stations_in_bbox({MinLat,MaxLat},{MinLon,MaxLon},WithVars,Token) ->
-  Ps = [{"network", "2"},
-       {"bbox", io_lib:format("~p,~p,~p,~p", [MinLon,MinLat,MaxLon,MaxLat])}],
+  Bbox = io_lib:format("~p,~p,~p,~p", [MinLon,MinLat,MaxLon,MaxLat]),
+  Ps = [{"network", "2"}, {"bbox", Bbox}],
   case WithVars of
     [] ->
       list_stations(Ps,Token);
@@ -93,6 +93,7 @@ json_to_station({S}) ->
 
 
 -spec binary_to_number(binary()) -> number().
+binary_to_number(null) -> null;
 binary_to_number(B) when is_binary(B) ->
   L = string:strip(binary_to_list(B)),
   case string:to_integer(L) of
