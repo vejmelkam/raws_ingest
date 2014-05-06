@@ -85,7 +85,12 @@ build_url(Fixed,Params) ->
 json_to_station({S}) ->
   Name = binary_to_list(proplists:get_value(<<"NAME">>, S)),
   % note: elevation is converted from feet to meters above sea level
-  Elev = binary_to_number(proplists:get_value(<<"ELEVATION">>, S)) / 3.2808399,
+  Elev = case binary_to_number(proplists:get_value(<<"ELEVATION">>, S)) of
+    null ->
+      null;
+    ElevInFeet ->
+      ElevInFeet / 3.2808399
+  end,
   StId = binary_to_list(proplists:get_value(<<"STID">>, S)),
   Lon = binary_to_number(proplists:get_value(<<"LONGITUDE">>, S)),
   Lat = binary_to_number(proplists:get_value(<<"LATITUDE">>, S)),
@@ -93,6 +98,7 @@ json_to_station({S}) ->
 
 
 -spec binary_to_number(binary()) -> number().
+binary_to_number(<<"NULL">>) -> null;
 binary_to_number(null) -> null;
 binary_to_number(B) when is_binary(B) ->
   L = string:strip(binary_to_list(B)),
@@ -146,4 +152,3 @@ check_summary({S}) ->
     Other ->
       {error, Other}
   end.
-
