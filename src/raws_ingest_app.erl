@@ -5,23 +5,27 @@
 -include("raws_ingest.hrl").
 
 %% Application callbacks
--export([start/2, stop/1]).
+-export([start/2, stop/1,read_config/0]).
 
 %% ===================================================================
 %% Application callbacks
 %% ===================================================================
 
 start(_StartType, Args=[StationSel,VarIds,TimeoutMins,Method]) ->
-    init_raws_tables(),
-    Token = read_token(),
-    check_station_selector(StationSel),
-    true = lists:foldl(fun (X,Acc) -> mesowest_wisdom:is_known_var(X) and Acc end, true, VarIds),
-    check_timeout_mins(TimeoutMins),
-    check_method(Method),
-    raws_ingest_sup:start_link([Token|Args]).
+  Cfg = read_config(),
+  Db = proplists:get_value(dbase, Cfg),
+  User = proplists:get_value(user, Cfg),
+  Pass = proplists:get_value(password, Cfg),
+  pgsql_manager:start_link(Db,User,Pass,5),
+  check_station_selector(StationSel),
+  true = lists:foldl(fun (X,Acc) -> mesowest_wisdom:is_known_var(X) and Acc end, true, VarIds),
+  check_timeout_mins(TimeoutMins),
+  check_method(Method),
+  raws_ingest_sup:start_link([Cfg|Args]).
+
 
 stop(_State) ->
-    ok.
+  ok.
 
 
 %% ------------------------------------------------------------------
@@ -30,7 +34,7 @@ stop(_State) ->
 
 -spec check_station_selector(term()) -> ok.
 check_station_selector(Sel) ->
-  case raws_ingest_server:is_station_selector(Sel) of
+  case raws_ingest:is_station_selector(Sel) of
     true ->
       ok;
     false ->
@@ -39,42 +43,27 @@ check_station_selector(Sel) ->
   end.
 
 
--spec init_raws_tables() -> ok.
-init_raws_tables() ->
-  ensure_table_exists(raws_station,record_info(fields,raws_station),[lat,lon],set),
-  ensure_table_exists(raws_obs,record_info(fields,raws_obs),[],bag),
-  ok.
-
-
--spec ensure_table_exists(atom(),[atom()], [atom()],atom()) -> ok.
-ensure_table_exists(Name,RecFields,NdxFields,Type) ->
-  case lists:member(Name,mnesia:system_info(tables)) of
-    true ->
-      ok;
-    false ->
-      {atomic,ok} = mnesia:create_table(Name, [{attributes,RecFields}, {disc_copies,[node()]}, {index,NdxFields}, {type,Type}]),
-      ok
-  end.
-
-
 -spec check_timeout_mins(number()) -> ok.
 check_timeout_mins(T) when T >= 15 -> ok;
 check_timeout_mins(_) -> throw(timeout_too_small).
 
 
-read_token() ->
-  case file:read_file("etc/raws_tokens") of
-    {ok,B} ->
-      string:strip(binary_to_list(B),right,$\n);
-    {error, Reason} ->
-      error_logger:error_msg("Failed to read API token from etc/raws_tokens with reason ~p.~n", [Reason]),
-      throw({no_token, Reason})
-  end.
-
-
 check_method(mesowest_json) -> ok;
-check_method(mesowest_web) -> ok;
 check_method(_) -> 
-  error_logger:error_msg("Retrieval method must be either mesowest_json or mesowest_web.~n"),
+  error_logger:error_msg("Retrieval method must be mesowest_json.~n"),
   throw(unknown_method).
 
+
+read_config() ->
+  {ok, B} = file:read_file("etc/raws_config"),
+  case erl_scan:string(binary_to_list(B)) of
+    {ok, S, _} ->
+      case erl_parse:parse_exprs(S) of
+        {ok, P} ->
+          case erl_eval:exprs(P, erl_eval:new_bindings()) of
+            {value, V, _} ->
+              V
+          end
+      end
+  end.
+    

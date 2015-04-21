@@ -7,7 +7,7 @@
   %{mod, {raws_ingest_app, [ {station_list,["ESPC2"]}, [air_temp,fm10,rel_humidity,soil_temp], 60, mesowest_json]}},
   {modules,[raws_ingest_app,raws_ingest_sup,raws_ingest_server,mesowest_ingest,mesowest_wisdom]},
   {registered, [raws_ingest_server]},
-  {applications, [kernel,stdlib,inets,mnesia]},
+  {applications, [kernel,stdlib,inets]},
   {included_applications, []},
   {env, []}
 ]}.

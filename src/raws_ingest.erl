@@ -2,8 +2,9 @@
 -author("Martin Vejmelka <vejmelkam@gmail.com>").
 -export([start/0]).
 -export([report_errors/0,clear_errors/0,update_now/1]).
--export([retrieve_station_info/1,retrieve_station_infos/1,resolve_station_selector/1]).
--export([retrieve_stations_in_region/2,acquire_stations_in_region/3]).
+-export([is_station_selector/1]).
+-export([retrieve_station_by_id/1,retrieve_stations_by_ids/1,resolve_station_selector/1,stations_to_ids/1]).
+-export([retrieve_stations_in_bbox/2,acquire_stations_in_bbox/3]).
 -export([retrieve_observations/3,acquire_observations/4]).
 -include("raws_ingest.hrl").
 -include_lib("stdlib/include/qlc.hrl").
@@ -13,8 +14,6 @@
 
 start() ->
   inets:start(),
-  mnesia:create_schema([node()]),
-  mnesia:start(),
   application:start(raws_ingest).
 
 
@@ -27,12 +26,13 @@ report_errors() ->
 clear_errors() ->
   raws_ingest_server:clear_errors().
 
+-spec stations_to_ids([#raws_station{}]) -> [string()].
+stations_to_ids(Sts) ->
+  lists:map(fun (#raws_station{id=Id}) -> Id end, Sts).
 
--spec update_now(non_neg_integer()) -> ok.
-update_now(TimeoutS) ->
-  raws_ingest_server:update_now(TimeoutS).
 
-
+%% @doc Converts any station selector into the selector {station_list, Lst}.
+%% @doc Queries the local database/filesystem only, no remote requests are made.
 -spec resolve_station_selector(station_selector()) -> station_selector().
 resolve_station_selector({station_list, Lst}) ->
   {station_list, Lst};
@@ -41,9 +41,8 @@ resolve_station_selector({station_file,Path}) ->
   {station_list, string:tokens(binary_to_list(B),"\n")};
 resolve_station_selector(Sel={region, {MinLat,MaxLat}, {MinLon,MaxLon}}) ->
   try
-    StationInfos = raws_ingest:retrieve_stations_in_region({MinLat,MaxLat},{MinLon,MaxLon}),
-    Ids = lists:map(fun (#raws_station{id=Id}) -> Id end, StationInfos),
-    {station_list, Ids}
+    Stations = raws_sql:retrieve_stations_in_bbox({MinLat,MaxLat},{MinLon,MaxLon}),
+    {station_list, stations_to_ids(Stations)}
   catch Bdy:Exc ->
     error_logger:error_msg("Failed to resolve station selector ~p due to exception~n~p (bdy ~p)~nstacktrace:~p~n",
                            [Sel,Bdy,Exc,erlang:get_stacktrace()]),
@@ -51,6 +50,74 @@ resolve_station_selector(Sel={region, {MinLat,MaxLat}, {MinLon,MaxLon}}) ->
   end.
 
 
+%% @doc Perform a server update now.
+-spec update_now(non_neg_integer()) -> ok.
+update_now(TimeoutS) ->
+  raws_ingest_server:update_now(TimeoutS).
+
+
+-spec retrieve_observations(station_selector(),var_selector(),{calendar:datetime(),calendar:datetime()}) -> [#raws_obs{}].
+retrieve_observations(SSel, Vars, {From, To}) ->
+  raws_sql:retrieve_observations(SSel,Vars,{From,To}).
+
+
+%% @doc Retrieves information for one station.
+-spec retrieve_station_by_id(string()) -> #raws_station{} | no_such_station.
+retrieve_station_by_id(StId) when is_list(StId) ->
+  raws_sql:retrieve_station_by_id(StId).
+
+
+%% @doc Retrieve station records from a list of ids.
+-spec retrieve_stations_by_ids([string()]) -> [#raws_station{}].
+retrieve_stations_by_ids(StIds) when is_list(StIds) ->
+  raws_sql:retrieve_stations_by_ids(StIds).
+
+
+-spec retrieve_stations_in_bbox({number(),number()},{number(),number()}) -> [#raws_station{}].
+retrieve_stations_in_bbox(Lats={MinLat,MaxLat},Lons={MinLon,MaxLon})
+  when is_number(MinLat) and is_number(MaxLat) and is_number(MinLon) and is_number(MaxLon) ->
+  raws_sql:retrieve_stations_in_bbox(Lats,Lons).
+
+
+%% @doc Make a remote HTTP request to list all stations in the bounding box
+%% @doc reporting the variables in the list WithVars.
+-spec acquire_stations_in_bbox({number(), number()},{number(), number()},[atom()]) -> [#raws_station{}].
+acquire_stations_in_bbox({MinLat,MaxLat},{MinLon,MaxLon},WithVars)
+    when is_number(MinLat) and is_number(MaxLat) and is_number(MinLon) and is_number(MaxLon) and is_list(WithVars) ->
+  raws_ingest_server:acquire_stations_in_bbox({MinLat,MaxLat},{MinLon,MaxLon},WithVars).
+
+
+%% @doc Acquire observations for the station selector and the variables given in the interval
+%% @doc From <--> To and set a timeout for the operation.
+acquire_observations(SSel,VarIds,{From,To},TimeoutS) when is_list(VarIds) and is_number(TimeoutS) ->
+  acquire_observations(SSel,VarIds,{From,To},TimeoutS,[]).
+
+
+%%-------------------------------------------------
+%% Verification functions
+%%-------------------------------------------------
+
+
+%% @doc Check if a term is a valid station selector.
+-spec is_station_selector(any()) -> boolean().
+is_station_selector({station_list,Lst}) when is_list(Lst) ->
+  true;
+is_station_selector({region,{MinLat,MaxLat},{MinLon,MaxLon}}) when is_number(MinLat) and is_number(MaxLat)
+                                                               and is_number(MinLon) and is_number(MaxLon) ->
+  true;
+is_station_selector({station_file,Path}) when is_list(Path) ->
+  true;
+is_station_selector(_) ->
+  false.
+
+
+%%-------------------------------------------------
+%% Internal functions
+%%-------------------------------------------------
+
+
+%% @doc An internal function that splits the observation acquisition into different time slices
+%% @doc to prevent bombarding the server with requests that are too large.
 -spec acquire_observations(station_selector(),[var_id()],{calendar:datetime(),calendar:datetime()},pos_integer()) -> [#raws_obs{}]|{error,any()}.
 acquire_observations(_SSel,_VarIds,{From,To},TimeoutS,Res) when From > To and is_list(_VarIds) and is_number(TimeoutS) ->
   Res;
@@ -70,79 +137,3 @@ acquire_observations(SSel,VarIds,{From,To},TimeoutS,Res) when is_list(VarIds) an
       raws_ingest_server:acquire_observations(SSel,VarIds,{From,To},TimeoutS)
   end.
 
-acquire_observations(SSel,VarIds,{From,To},TimeoutS) when is_list(VarIds) and is_number(TimeoutS) ->
-  acquire_observations(SSel,VarIds,{From,To},TimeoutS,[]).
-
-
--spec retrieve_observations(station_selector(),var_selector(),{calendar:datetime(),calendar:datetime()}) -> [#raws_obs{}].
-retrieve_observations({station_list, Ss},VarSel,{From,To}) ->
-  VarCheck = get_var_selector_fun(VarSel),
-  case mnesia:transaction(
-    fun() ->
-        Q = qlc:q([X || X=#raws_obs{timestamp=T,station_id=S,var_id=V} <- mnesia:table(raws_obs),
-                  T >= From, T =< To, lists:member(S,Ss), VarCheck(V)]),
-        qlc:e(Q) end) of
-    {atomic, R} ->
-      R;
-    Error ->
-      Error
-  end;
-retrieve_observations({region, LatRng,LonRng},VarSel,{From,To}) ->
-  VarCheck = get_var_selector_fun(VarSel),
-  Sts = lists:map(fun(X) -> X#raws_station.id end, retrieve_stations_in_region(LatRng,LonRng)),
-  case mnesia:transaction(
-    fun() ->
-        Q = qlc:q([X || X=#raws_obs{timestamp=T,station_id=S,var_id=V} <- mnesia:table(raws_obs),
-                   T >= From, T =< To, lists:member(S,Sts), VarCheck(V)]),
-        qlc:e(Q) end) of
-    {atomic, R} ->
-      R;
-    Error ->
-      Error
-  end.
-
-
--spec retrieve_station_info(string()) -> #raws_station{} | no_such_station.
-retrieve_station_info(StId) when is_list(StId) ->
-  case mnesia:transaction(fun () -> mnesia:read({raws_station,StId}) end) of
-    {atomic,[StInfo]} ->
-      StInfo;
-    {error,_Reason} ->
-      no_such_station
-  end.
-
-
--spec retrieve_station_infos([string()]) -> [#raws_station{}|no_such_station].
-retrieve_station_infos(StIds) when is_list(StIds) ->
-  lists:map(fun retrieve_station_info/1, StIds).
-
-
--spec retrieve_stations_in_region({number(),number()},{number(),number()}) -> [#raws_station{}].
-retrieve_stations_in_region({MinLat,MaxLat},{MinLon,MaxLon}) when is_number(MinLat) and is_number(MaxLat)
-                                                              and is_number(MinLon) and is_number(MaxLon) ->
-  case mnesia:transaction(fun() ->
-        Q = qlc:q([X || X=#raws_station{lat=Lat,lon=Lon} <- mnesia:table(raws_station),
-                    Lat >= MinLat, Lat =< MaxLat, Lon >= MinLon, Lon =< MaxLon]),
-        qlc:e(Q) end) of
-    {atomic, R} ->
-      R;
-    Error ->
-      Error
-  end.
-
-
-acquire_stations_in_region({MinLat,MaxLat},{MinLon,MaxLon},WithVars)
-    when is_number(MinLat) and is_number(MaxLat)
-    and  is_number(MinLon) and is_number(MaxLon)
-    and is_list(WithVars) ->
-  raws_ingest_server:acquire_stations_in_region({MinLat,MaxLat},{MinLon,MaxLon},WithVars).
-
-%%-------------------------------------------------
-%% Internal functions
-%%-------------------------------------------------
-
--spec get_var_selector_fun(var_selector()) -> fun((var_id()) -> boolean()).
-get_var_selector_fun(all_vars) ->
-  fun (_) -> true end;
-get_var_selector_fun(VarIds) when is_list(VarIds) ->
-  fun (V) -> lists:member(V,VarIds) end.
