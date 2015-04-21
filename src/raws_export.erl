@@ -4,7 +4,7 @@
 -export([obs_to_csv/2,obs_to_csv/3]).
 -export([export_station_obs_year/3,export_station_obs_csv/4,export_station_info/1]).
 -export([export_station_fm_vars_csv/3]).
--export([stations_to_kml/2]).
+-export([stations_to_kml/2,stations_to_geojson/2]).
 -include("raws_ingest.hrl").
 
 
@@ -61,9 +61,29 @@ stations_to_kml(Sinfos,Path) ->
   file:write_file(Path,lists:flatten(KML)).
 
 
-% TODO: add GeoJSON export code
+%% @doc Convert a list of stations into the GeoJSON format and store result in <file>.
 stations_to_geojson(Sinfos,Path) ->
-  file:write_file(Path,[]).
+  GJ = ["{\n", string:join(lists:map(fun station_to_geojson/1, Sinfos), ",\n"), "\n}"],
+  file:write_file(Path,GJ).
+
+%% @doc Convert a station record into a GeoJSON representation.
+station_to_geojson(#raws_station{id=Id,name=Name,lat=Lat,lon=Lon,elevation=Elev}) ->
+  [
+    "  {\n",
+    "    \"type\": \"Feature\",\n"
+    "    \"geometry\": {\n",
+    "      \"type\": \"Point\",\n"
+    "      \"coordinates\": [", num_to_list(Lon), ", ", num_to_list(Lat), "]\n"
+    "    },\n"
+    "    \"properties\": {\n",
+    "      \"code\" : \"", Id, "\",\n",
+    "      \"name\" : \"", Name, "\",\n",
+    "      \"elevation\": ", num_to_list(Elev + 0.0), "\n"
+    "  }" ].
+
+
+num_to_list(Num) ->
+  float_to_list(Num + 0.0, [{decimals,6}, compact]).
 
 
 %% ----------------------------------------
