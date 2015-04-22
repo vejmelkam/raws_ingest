@@ -8,8 +8,8 @@
 %% ------------------------------------------------------------------
 
 -export([start_link/5]).
--export([report_errors/0,clear_errors/0,update_now/1,acquire_observations/4]).
--export([acquire_stations_in_bbox/3]).
+-export([report_errors/0,clear_errors/0,update_now/1]).
+-export([acquire_observations/4,acquire_stations/2]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -22,8 +22,9 @@
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-start_link(Cfg,StationInfos,VarIds,TimeoutMins,Method) ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [Cfg,StationInfos,VarIds,TimeoutMins,calendar:local_time(),Method,[]], []).
+start_link(Cfg,SSel,VarIds,TimeoutMins,Method) ->
+  Method = mesowest_json,
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [Cfg,SSel,VarIds,TimeoutMins,calendar:local_time(),Method,[]], []).
 
 
 report_errors() ->
@@ -41,11 +42,10 @@ acquire_observations(SSel,VarIds,{From,To},TimeoutS) ->
   gen_server:call(?SERVER,{acquire_observations,SSel,VarIds,From,To},TimeoutS*1000).
 
 
-acquire_stations_in_bbox(LatRng={MinLat,MaxLat},LonRng={MinLon,MaxLon},WithVars)
-    when is_number(MinLat) and is_number(MaxLat)
-    and  is_number(MinLon) and is_number(MaxLon)
-    and  is_list(WithVars) ->
-  gen_server:call(?SERVER,{acquire_stations_in_bbox,LatRng,LonRng,WithVars},120000).
+-spec acquire_stations(station_selector(),[atom()]) -> [#raws_station{}]|{error,any()}.
+acquire_stations(SSel,WithVars) ->
+  true = raws_ingest:is_station_selector(SSel),
+  gen_server:call(?SERVER,{acquire_stations,SSel,WithVars},120000).
 
 
 
@@ -58,34 +58,29 @@ init(Args) ->
   {ok, Args}.
 
 
-handle_call({acquire_stations_in_bbox,LatRng,LonRng,WithVars}, _From, State=[Cfg|_NotUsed]) ->
+handle_call({acquire_stations,SSel,WithVars}, _From, State=[Cfg,_,_,_,_,Method,_]) ->
   Token = proplists:get_value(token, Cfg),
-  {reply, safe_acquire_stations_in_bbox(LatRng,LonRng,WithVars,Token), State};
-handle_call({acquire_observations,StationSelR,VarIdsR,From,To}, _From, State=[Cfg,_,_,_,_,Method,_]) ->
+  {reply, safe_acquire_stations(Method,SSel,WithVars,Token), State};
+handle_call({acquire_observations,SSel,VarIdsR,From,To}, _From, State=[Cfg,_,_,_,_,Method,_]) ->
   Token = proplists:get_value(token, Cfg),
-  case raws_ingest:resolve_station_selector(StationSelR) of
-    {station_list, StationIds} ->
-      case safe_acquire_observations(Method,Token,From,To,StationIds,VarIdsR) of
-        {[], StInfos, Obss} ->
-          store_stations(StInfos),
-          store_observations(Obss),
-          {reply, Obss, State};
-        {NewErrors,_,_} ->
-          % errors not incurred during updates are not kept in the state but reported immeditely.
-          {reply, {error, NewErrors}, State}
-      end;
-    empty_station_selector ->
-      {reply, [], State};
+  case safe_acquire_observations(Method,Token,From,To,SSel,VarIdsR) of
+    {[], StInfos, Obss} ->
+      store_stations(StInfos),
+      store_observations(Obss),
+      {reply, Obss, State};
+    {NewErrors,_,_} ->
+      % errors not incurred during updates are not kept in the state but reported immeditely.
+      {reply, {error, NewErrors}, State};
     _ ->
-      {reply, {error, io_lib:format("Unable to resolve station selector ~p.",[StationSelR])}, State}
+      {reply, {error, io_lib:format("Unable to resolve station selector ~p.",[SSel])}, State}
   end;
 handle_call(update_now, _From, State=[Cfg,StationSel0,VarIds,TimeoutMins,_UpdateFrom,Method,Errors]) ->
   case StationSel0 of
     empty_station_selector ->
       {reply, ok, State};
     _ ->
-      {NewErrors,UpdateFrom1,StationSel1} = update_observations_now(State),
-      {reply, ok, [Cfg,StationSel1,VarIds,TimeoutMins,UpdateFrom1,Method,NewErrors ++ Errors]}
+      {NewErrors,UpdateFrom1,_} = update_observations_now(State),
+      {reply, ok, [Cfg,StationSel0,VarIds,TimeoutMins,UpdateFrom1,Method,NewErrors ++ Errors]}
   end;
 handle_call(report_errors, _From, State=[_,_,_,_,_,_,Errors]) ->
   {reply, Errors, State};
@@ -97,10 +92,10 @@ handle_cast(_Msg, State) ->
   {noreply, State}.
 
 
-handle_info(update_timeout,State = [Cfg,_StationSel,VarIds,TimeoutMins,_UpdateFrom,Method,Errors]) ->
-  {NewErrors,UpdateFrom1,StationSel1} = update_observations_now(State),
+handle_info(update_timeout,State = [Cfg,StationSel,VarIds,TimeoutMins,_UpdateFrom,Method,Errors]) ->
+  {NewErrors,UpdateFrom1,_} = update_observations_now(State),
   timer:send_after(TimeoutMins * 60 * 1000, update_timeout),
-  {noreply, [Cfg,StationSel1,VarIds,TimeoutMins,UpdateFrom1,Method,NewErrors ++ Errors]};
+  {noreply, [Cfg,StationSel,VarIds,TimeoutMins,UpdateFrom1,Method,NewErrors ++ Errors]};
 handle_info(_Info, State) ->
   {noreply, State}.
 
@@ -117,43 +112,51 @@ code_change(_OldVsn, State, _Extra) ->
 %% ------------------------------------------------------------------
 
 %% @doc Update the observations using the stored station selector now.
-update_observations_now([Cfg,StationSel0,VarIds,_TimeoutMins,UpdateFrom,Method,_Errors]) ->
+update_observations_now([_,empty_station_selector,_,_,_,_,_]) ->
+  {[],calendar:universal_time(),empty_station_selector};
+update_observations_now([Cfg,StationSel,VarIds,_TimeoutMins,UpdateFrom,Method,_Errors]) ->
   Token = proplists:get_value(token, Cfg),
   TimeNow = calendar:universal_time(),
-  StationSel = raws_ingest:resolve_station_selector(StationSel0),
-  case StationSel of
-    {station_list, StationIds} ->
-      {NewErrors,StationInfos,Obs} = safe_acquire_observations(Method,Token,UpdateFrom,TimeNow,StationIds,VarIds),
-      store_stations(StationInfos),
-      store_observations(Obs),
-      case NewErrors of
-        [] ->
-          % only mark database updated till TimeNow if there were no errors
-          {[],TimeNow,StationSel};
-        _NotEmpty ->
-          % since there were errors, do not consider the time interval UpdateFrom to TimeNow as processed
-          {NewErrors,UpdateFrom,StationSel}
-      end;
-    empty_station_selector ->
+  error_logger:info_msg("raws_ingest_server: performing update of observations at ~p", [TimeNow]),
+  {NewErrors,StationInfos,Obs} = safe_acquire_observations(Method,Token,UpdateFrom,TimeNow,StationSel,VarIds),
+  store_stations(StationInfos),
+  store_observations(Obs),
+  case NewErrors of
+    [] ->
+      % only mark database updated till TimeNow if there were no errors
       {[],TimeNow,StationSel};
-    _ ->
-      {[{error,StationSel,TimeNow,unresolved_stations,"Could not resolve stations from region."}],UpdateFrom,StationSel}
+    _NotEmpty ->
+      % since there were errors, do not consider the time interval UpdateFrom to TimeNow as processed
+      {NewErrors,UpdateFrom,StationSel}
   end.
 
 
 %% @doc Acquire stations inside given bounding box, reporting given variables. Use token Token.
--spec safe_acquire_stations_in_bbox({number(),number()},{number(),number()},[var_id()],string()) -> [#raws_station{}].
-safe_acquire_stations_in_bbox(LatRng={MinLat,MaxLat},LonRng={MinLon,MaxLon},WithVars,Token) ->
+-spec safe_acquire_stations(atom(),station_selector(),[var_id()],string()) -> [#raws_station{}].
+safe_acquire_stations(mesowest_json,{region, LatRng={MinLat,MaxLat},LonRng={MinLon,MaxLon}},WithVars,Token) ->
   try
-    S = mesowest_json_ingest:find_stations_in_bbox(LatRng,LonRng,WithVars,Token),
+    error_logger:info_msg("raws_ingest_server: acquiring stations in bbox ~p x ~p with vars ~p", [LatRng,LonRng,WithVars]),
+    S = mesowest_json_ingest:acquire_stations_in_bbox(LatRng,LonRng,WithVars,Token),
     store_stations(S),
-    error_logger:info_msg("raws_ingest_server: acquired ~p stations in bbox ~p-~p lat, ~p-~p lon.~n",
+    error_logger:info_msg("raws_ingest_server: acquired ~p stations in bbox ~p-~p lat, ~p-~p lon.",
       [length(S),MinLat,MaxLat,MinLon,MaxLon]),
     S
   catch Bdy:Exc ->
-    error_logger:error_msg("Failed to find stations in bbox [~p,~p], [~p,~p]~nstacktrace:~p.~n", [MinLat,MaxLat,MinLon,MaxLon,erlang:get_stacktrace()]),
+    error_logger:error_msg("Failed to find stations in bbox [~p,~p], [~p,~p]~nstacktrace:~p.", [MinLat,MaxLat,MinLon,MaxLon,erlang:get_stacktrace()]),
     {error, Bdy, Exc}
-end.
+end;
+safe_acquire_stations(mesowest_json,{station_list, Ids}, WithVars, Token) ->
+  try
+    S = mesowest_json_ingest:acquire_listed_stations(Ids,WithVars,Token),
+    store_stations(S),
+    error_logger:info_msg("raws_ingest_server: acquired ~p stations from list with ~p entries.", [length(S), length(Ids)]),
+    S
+  catch Bdy:Exc ->
+    error_logger:error_msg("raws_ingest_server: failed to acquire stations from list ~p~nstacktrace:~p.", [Ids,erlang:get_stacktrace()]),
+    {error, Bdy, Exc}
+end;
+safe_acquire_stations(_,empty_station_selector, _, _) ->
+  [].
 
 
 %% @doc Store station information for a list of stations.
@@ -167,18 +170,25 @@ store_observations(Obs) ->
   lists:map(fun raws_sql:store_raws_obs/1, Obs).
 
 
-%% @doc Acquire observations from
-safe_acquire_observations(mesowest_json,Token,From,To,Sts,VarIds) ->
+%% @doc Acquire observations from stations satisfying the station selector.
+-spec safe_acquire_observations(atom(),string(),calendar:datetime(),calendar:datetime(),station_selector(),[atom()]) -> {[#raws_station{}],[#raws_obs{}]}.
+safe_acquire_observations(mesowest_json,_,_,_,empty_station_selector,_) ->
+  {[],[],[]};
+safe_acquire_observations(mesowest_json,Token,From,To,SSel={station_list, Sts},VarIds) ->
+  StIds = raws_ingest:stations_to_ids(Sts),
   try
-    {StInfos,Obss} = mesowest_json_ingest:retrieve_observations(From,To,Sts,VarIds,Token),
+    {StInfos,Obss} = mesowest_json_ingest:acquire_observations(From,To,StIds,VarIds,Token),
     error_logger:info_msg("raws_ingest_server: acquired ~p observations from ~p stations in interval [~p <-> ~p] via MesoWest/JSON.~n",
       [length(Obss),length(StInfos),to_esmf(From),to_esmf(To)]),
     {[],StInfos,Obss}
   catch Cls:Exc ->
     error_logger:error_msg("raws_ingest_server encountered exception ~p:~p in retrieve_observations for stations~n~p from ~w to ~w for vars ~w~nstacktrace: ~p.~n",
-                           [Cls,Exc,Sts,From,To,VarIds,erlang:get_stacktrace()]),
-    {[{error,Sts,calendar:local_time(),Cls,Exc}], [], []}
-  end.
+                           [Cls,Exc,SSel,From,To,VarIds,erlang:get_stacktrace()]),
+    {[{error,SSel,calendar:local_time(),Cls,Exc}], [], []}
+  end;
+safe_acquire_observations(mesowest_json,Token,From,To,SSel,VarIds) ->
+  Sts = safe_acquire_stations(mesowest_json,SSel,VarIds,Token),
+  safe_acquire_observations(mesowest_json,Token,From,To,{station_list,Sts},VarIds).
 
 
 %% @doc Convert an erlang datetime to the ESMF representation.

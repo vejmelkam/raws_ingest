@@ -1,7 +1,8 @@
 
 -module(mesowest_json_ingest).
 -author("Martin Vejmelka <vejmelkam@gmail.com>").
--export([find_stations_in_bbox/4,retrieve_observations/5,retrieve_variables/1]).
+-export([acquire_stations_in_bbox/4,acquire_listed_stations/3]).
+-export([acquire_observations/5,retrieve_variables/1]).
 
 -include("raws_ingest.hrl").
 
@@ -21,8 +22,8 @@ retrieve_variables(Token) ->
 
 %% @doc Retrieve observations between times <From> and <To> for the stations
 %% @doc <StationIds> and the variables <VarIds>.  Use the API token <Token>.
--spec retrieve_observations(calendar:datetime(),calendar:datetime(),[string()],[var_id()],string()) -> {[#raws_station{}],[#raws_obs{}]}.
-retrieve_observations(From,To,StationIds,VarIds,Token) ->
+-spec acquire_observations(calendar:datetime(),calendar:datetime(),[string()],[var_id()],string()) -> {[#raws_station{}],[#raws_obs{}]}.
+acquire_observations(From,To,StationIds,VarIds,Token) ->
   Url = build_url(?MW_STATION_URL,
                   [{"token",Token},
                    {"stid",string:join(StationIds,",")},
@@ -45,15 +46,27 @@ to_timestamp({{Y,M,D},{H,Min,_}}) ->
 
 %% @doc Returns all stations in the bbox <MinLat>,<MaxLat> and <MinLon>, <MaxLon> that
 %% @doc report variables <WithVars>. Uses the API token <Token>.
--spec find_stations_in_bbox({number(),number()},{number(),number()},[string()],string()) -> [#raws_station{}].
-find_stations_in_bbox({MinLat,MaxLat},{MinLon,MaxLon},WithVars,Token) ->
+-spec acquire_stations_in_bbox({number(),number()},{number(),number()},[string()],string()) -> [#raws_station{}].
+acquire_stations_in_bbox({MinLat,MaxLat},{MinLon,MaxLon},WithVars,Token) ->
   Bbox = io_lib:format("~p,~p,~p,~p", [MinLon,MinLat,MaxLon,MaxLat]),
   Ps = [{"network", "2"}, {"bbox", Bbox}],
   case WithVars of
     [] ->
       list_stations(Ps,Token);
     _NotEmpty ->
-      list_stations([{"vars",string:join(lists:map(fun mesowest_wisdom:varid_to_json_name/1,WithVars),",")}|Ps],Token)
+      VarClause = {"vars",string:join(lists:map(fun mesowest_wisdom:varid_to_json_name/1,WithVars),",")},
+      list_stations([VarClause|Ps],Token)
+  end.
+
+-spec acquire_listed_stations([string()],[string()],string()) -> [#raws_station{}].
+acquire_listed_stations(StationIds,WithVars,Token) ->
+  Ps = [{"network", "2"}, {"stid", string:join(StationIds,",")}],
+  case WithVars of
+    [] ->
+      list_stations(Ps,Token);
+    _NotEmpty ->
+      VarClause = {"vars",string:join(lists:map(fun mesowest_wisdom:varid_to_json_name/1,WithVars),",")},
+      list_stations([VarClause|Ps], Token)
   end.
 
 %% @doc Lists all stations that satisfy parameters <Params>.
@@ -132,20 +145,20 @@ binary_to_number(B) when is_binary(B) ->
 -spec extract_observations({term()},[atom()]) -> {term(),[#raws_obs{}]}.
 extract_observations({S},VarIds) ->
   StInfo = json_to_station({S}),
-  #raws_station{id=StId,lon=Lon,lat=Lat} = StInfo,
+  #raws_station{id=StId,lon=Lon,lat=Lat,elevation=Elev} = StInfo,
   {Obss} = proplists:get_value(<<"OBSERVATIONS">>,S),
   TS = lists:map(fun decode_datetime/1,proplists:get_value(<<"date_time">>,Obss)),
-  {StInfo,lists:map(fun(VarId) -> extract_observations_for_var(VarId,StId,Lat,Lon,TS,Obss) end, VarIds)}.
+  {StInfo,lists:map(fun(VarId) -> extract_observations_for_var(VarId,StId,Lat,Lon,Elev,TS,Obss) end, VarIds)}.
 
 
-extract_observations_for_var(VarId,StId,Lat,Lon,TS,S) ->
+extract_observations_for_var(VarId,StId,Lat,Lon,Elev,TS,S) ->
   Var = mesowest_wisdom:varid_to_json_name(VarId),
   case proplists:get_value(list_to_binary(Var), S) of
     undefined ->
       [];
     Vals ->
       lists:map(fun ({T,V}) when is_number(V) ->
-        #raws_obs{station_id=StId,lat=Lat,lon=Lon,var_id=VarId,timestamp=T,
+        #raws_obs{station_id=StId,lat=Lat,lon=Lon,elevation=Elev,var_id=VarId,timestamp=T,
                   value=mesowest_wisdom:xform_value(VarId,V),
                   variance=mesowest_wisdom:estimate_variance(StId,VarId,V)};
               ({_,_}) -> []
@@ -177,3 +190,4 @@ check_summary({S}) ->
     Other ->
       {error, Other}
   end.
+

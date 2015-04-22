@@ -24,21 +24,24 @@ Use of the `raws_ingest` application is simple.  The configuration is stored in 
     {mod,{raws_ingest_app,[["ESPC2","BAWC2","RRAC2"], [temp,fm10,rel_humidity,accum_precip], 180]}}
 
 The argument list contains a list of station ids, a list of variables and refresh frequency given as an interval in minutes.
-Note that the system will not accept a refresh frequency less than 60 minutes.
+Note that the system will not accept a refresh frequency less than 20 minutes.
 
 As soon as the application is started, the observations for all stations are retrieved and stored periodically according to the
 specified timeout.
 
 ## Storage
 
-The observations and station information retrieved from MesoWest is stored in two mnesia tables `raws_obs` and `raws_station`
+The observations and station information retrieved from MesoWest is stored in two PostgreSQL tables `raws_observations` and `raws_stations`
 in the form of the respective records.
 
-Any single observation is stored as a `#raws_obs` record:
+Any single observation is stored (in denormalized form) as a `#raws_obs` record:
 
     -record(raws_obs,{
       timestamp :: calendar:datetime(),
       station_id :: string(),
+      lat :: number(),
+      lon :: number(),
+      elevation :: number(),
       var_id :: var_id(),
       value :: number(),
       variance :: number()}).
@@ -56,37 +59,42 @@ Information about each station is stored as the record:
 
 A user can of course query these tables directly or use the API provided in `raws_ingest`.
 
-## Retrieving observations
+## Retrieving observations from database
 
-Observations can be retrieved using two functions, either
+Observations can be retrieved using the function
 
-    raws_ingest:retrieve_observations(StationId :: string(), {From :: calendar:datetime(), To :: calendar:datetime()})
+    raws_ingest:retrieve_observations(SSel :: station_selector(), VarIds :: var_selector(), {From :: calendar:datetime(), To :: calendar:datetime()})
 
-which retrieves all observations in the time interval for the station (of all variables that are stored).
+which retrieves all observations in the time interval for the selected stations and variables between From and To.
 
-Alternatively, to retrieve all observations stored in a rectangular lon/lat region, one can use:
-
-
-    raws_ingest:retrieve_observations({From :: calendar:datetime(), To :: calendar:datetime()},
-                                      {MinLat :: number(), MaxLat :: number()},
-                                      {MinLon :: number(), MaxLon :: number()})
-
-which will retrieve all observations acquired in this geographic region and time interval.
+A station selector can be either `{station_list, [Code1, Code2, ...]}` or `{region, {MinLat,MaxLat},{MinLon,MaxLon}}`.
 
 
-## Retrieving station information
+## Retrieving station information from database
 
 The function
 
-    raws_ingest:station_info(StationId :: string())
+    raws_ingest:retrieve_stations(station_selector()) -> [#raws_station{}]
 
-returns either a `#raws_station` record or `no_such_station` if no station with the given id exists in the mnesia table.
+returns all stations satisfying the selector.
+
+## Acquiring new stations and observations
+
 
 The function
 
-    raws_ingest:stations_in_region({MinLat :: number(),MaxLat :: number()},{MinLon :: number(), MaxLon :: number()})
+    raws_ingest:acquire_stations(station_selector(),var_selector()) -> [#raws_station{}]|{error,any()}.
 
-returns all the stations with lon/lat coordinates within the given ranges.
+will use remote services to resolve the station selector (instead of relying on the local database).  Any results returned
+will be stored in the `raws_station` table.
+
+The function
+
+    raws_ingest:acquire_observations(SSel :: station_selector(), Vars ::[atom()],{From :: calendar:datetime(), To :: calendar:datetime()}, TimeoutS) -> 
+      [#raws_obs{}]|{error,any()}.
+
+will query remote services to acquire observations for stations corresponding to the station selector and for variables Vars in the
+indicated interval. Information about the stations is refreshed every time observations are being acquired.  This is done because occasionally the stations move and the observations are tagged with the station locations in the `raws_observations` table.
 
 
 ## Forcing updates and error handling
@@ -108,5 +116,5 @@ and cleared with
 
 # Caveats
 
-  * if a station does not have a sensor with a variable, the MesoWest website will return nothing, thr library currently does nothing about this
+  * if a station does not have a sensor with a variable, the MesoWest website will return nothing, the library currently does nothing about this
 

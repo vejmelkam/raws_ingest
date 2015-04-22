@@ -8,6 +8,7 @@
   station_id :: string(),
   lat :: number(),
   lon :: number(),
+  elevation :: number(),
   var_id :: var_id(),
   value :: number(),
   variance :: number()}).

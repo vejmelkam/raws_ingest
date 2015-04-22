@@ -2,7 +2,8 @@ set role wrfx2;
 
 create table raws_stations (raws_code varchar(5) primary key, name varchar(64), lat double precision, lon double precision, elevation double precision);
 
-create table raws_observations (ts timestamp, raws_code varchar(5), lat double precision, lon double precision, var_id varchar(16), value double precision, variance double precision);
+create table raws_observations (ts timestamp, raws_code varchar(5), lat double precision, lon double precision, elevation double precision,
+                                var_id varchar(16), value double precision, variance double precision, primary key(ts, raws_code, var_id));
 
 create table raws_variables (var_id varchar(16) primary key, full_name text, units varchar(20));
 
