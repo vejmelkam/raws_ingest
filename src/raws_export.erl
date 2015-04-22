@@ -104,8 +104,8 @@ station_info_to_kml(#raws_station{id=I,name=N,lat=Lat,lon=Lon,elevation=Elev}) -
 obs_to_csv_string([],_,Lines) ->
   string:join(lists:reverse(Lines),"\n");
 obs_to_csv_string([O|Rest],Sep,Lines) ->
-  #raws_obs{timestamp={{Y,M,D},{H,Min,S}},lat=Lat,lon=Lon,elevation=Elev,value=Val,variance=Var} = O,
-  StrList = lists:map(fun item_to_list/1, [Y,M,D,H,Min,S,Lat,Lon,Elev,Val,Var]),
+  #raws_obs{timestamp={{Y,M,D},{H,Min,S}},lat=Lat,lon=Lon,elevation=Elev,value=Val,var_id=Vname,variance=Var} = O,
+  StrList = lists:map(fun item_to_list/1, [Y,M,D,H,Min,S,Lat,Lon,Elev,Vname,Val,Var]),
   obs_to_csv_string(Rest,Sep,[lists:flatten(string:join(StrList, Sep))|Lines]).
 
 
