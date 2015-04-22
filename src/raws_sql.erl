@@ -38,11 +38,11 @@ store_raws_station(St=#raws_station{}) ->
         {{insert,0,1},[]} ->
           ok;
         {error, E} ->
-          error_logger:error_msg("Failed inserting raws_station into table with error ~p", [E]),
+          error_logger:error_msg("Failed inserting ~p into table raws_stations with error ~p", [Sql,E]),
           error
       end;
     {error, E} ->
-      error_logger:error_msg("Failed updating raws_station into table with error ~p", [E]),
+      error_logger:error_msg("Failed updating table raws_station with ~p with error ~p", [Sql,E]),
       error
   end.
 
@@ -83,11 +83,11 @@ store_raws_obs(Obs=#raws_obs{}) ->
         {{insert,0,1},_}
           -> ok;
         {error, E} ->
-          error_logger:error_msg("Failed inserting raws_obs into table with error ~p", [E]),
+          error_logger:error_msg("Failed inserting ~p into table raws_observations with error ~p", [Obs,E]),
           error
       end;
     {error, E} ->
-      error_logger:error_msg("Failed updating raws_obs into table with error ~p", [E]),
+      error_logger:error_msg("Failed updating ~p in table raws_observations with error ~p", [Obs,E]),
       error
   end.
 
