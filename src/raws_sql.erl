@@ -93,12 +93,21 @@ store_raws_obs(Obs=#raws_obs{}) ->
 
 
 -spec raws_obs_to_sql(#raws_obs{}) -> [term()].
-raws_obs_to_sql(#raws_obs{timestamp=TS,station_id=Sid,lat=Lat,lon=Lon,elevation=Elev,var_id=VarId,value=V,variance=Var}) ->
+raws_obs_to_sql(#raws_obs{timestamp=TS,station_id=Sid,lat=Lat,lon=Lon,elevation=Elev,var_id=VarId,value=V,variance=Var0}) ->
+  % substitute unknown variances with -1 for SQL storage
+  Var = case Var0 of
+    unknown -> -1;
+    Number -> Number
+  end,
   [TS,Sid,Lat,Lon,Elev,atom_to_list(VarId),V,Var].
 
 
 -spec sql_to_raws_obs([term()]) -> #raws_obs{}.
-sql_to_raws_obs({TS,SidB,Lat,Lon,Elev,VarIdB,V,Var}) ->
+sql_to_raws_obs({TS,SidB,Lat,Lon,Elev,VarIdB,V,Var0}) ->
+  Var = case Var0 of
+    -1 -> unknown;
+    Number -> Number
+  end,
   #raws_obs{timestamp=TS, station_id=binary_to_list(SidB), lat=Lat, lon=Lon, elevation=Elev,
             var_id=list_to_atom(binary_to_list(VarIdB)), value=V, variance=Var}.
 
