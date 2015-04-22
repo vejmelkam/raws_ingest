@@ -74,12 +74,19 @@ handle_call({acquire_observations,StationSelR,VarIdsR,From,To}, _From, State=[Cf
           % errors not incurred during updates are not kept in the state but reported immeditely.
           {reply, {error, NewErrors}, State}
       end;
+    empty_station_selector ->
+      {reply, [], State};
     _ ->
       {reply, {error, io_lib:format("Unable to resolve station selector ~p.",[StationSelR])}, State}
   end;
-handle_call(update_now, _From, State=[Cfg,_StationSel0,VarIds,TimeoutMins,_UpdateFrom,Method,Errors]) ->
-  {NewErrors,UpdateFrom1,StationSel1} = update_observations_now(State),
-  {reply, ok, [Cfg,StationSel1,VarIds,TimeoutMins,UpdateFrom1,Method,NewErrors ++ Errors]};
+handle_call(update_now, _From, State=[Cfg,StationSel0,VarIds,TimeoutMins,_UpdateFrom,Method,Errors]) ->
+  case StationSel0 of
+    empty_station_selector ->
+      {reply, ok, State};
+    _ ->
+      {NewErrors,UpdateFrom1,StationSel1} = update_observations_now(State),
+      {reply, ok, [Cfg,StationSel1,VarIds,TimeoutMins,UpdateFrom1,Method,NewErrors ++ Errors]}
+  end;
 handle_call(report_errors, _From, State=[_,_,_,_,_,_,Errors]) ->
   {reply, Errors, State};
 handle_call(clear_errors, _From, [Cfg,StationSel0,VarIds,TimeoutMins,UpdateFrom,Method,_]) ->
@@ -90,10 +97,10 @@ handle_cast(_Msg, State) ->
   {noreply, State}.
 
 
-handle_info(update_timeout,State = [Token,_StationSel,VarIds,TimeoutMins,_UpdateFrom,Method,Errors]) ->
+handle_info(update_timeout,State = [Cfg,_StationSel,VarIds,TimeoutMins,_UpdateFrom,Method,Errors]) ->
   {NewErrors,UpdateFrom1,StationSel1} = update_observations_now(State),
   timer:send_after(TimeoutMins * 60 * 1000, update_timeout),
-  {noreply, [Token,StationSel1,VarIds,TimeoutMins,UpdateFrom1,Method,NewErrors ++ Errors]};
+  {noreply, [Cfg,StationSel1,VarIds,TimeoutMins,UpdateFrom1,Method,NewErrors ++ Errors]};
 handle_info(_Info, State) ->
   {noreply, State}.
 
@@ -127,6 +134,8 @@ update_observations_now([Cfg,StationSel0,VarIds,_TimeoutMins,UpdateFrom,Method,_
           % since there were errors, do not consider the time interval UpdateFrom to TimeNow as processed
           {NewErrors,UpdateFrom,StationSel}
       end;
+    empty_station_selector ->
+      {[],TimeNow,StationSel};
     _ ->
       {[{error,StationSel,TimeNow,unresolved_stations,"Could not resolve stations from region."}],UpdateFrom,StationSel}
   end.

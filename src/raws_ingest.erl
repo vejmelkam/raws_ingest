@@ -34,6 +34,8 @@ stations_to_ids(Sts) ->
 %% @doc Converts any station selector into the selector {station_list, Lst}.
 %% @doc Queries the local database/filesystem only, no remote requests are made.
 -spec resolve_station_selector(station_selector()) -> station_selector().
+resolve_station_selector(empty_station_selector) ->
+  empty_station_selector;
 resolve_station_selector({station_list, Lst}) ->
   {station_list, Lst};
 resolve_station_selector({station_file,Path}) ->
@@ -106,6 +108,8 @@ is_station_selector({region,{MinLat,MaxLat},{MinLon,MaxLon}}) when is_number(Min
                                                                and is_number(MinLon) and is_number(MaxLon) ->
   true;
 is_station_selector({station_file,Path}) when is_list(Path) ->
+  true;
+is_station_selector(empty_station_selector) ->
   true;
 is_station_selector(_) ->
   false.

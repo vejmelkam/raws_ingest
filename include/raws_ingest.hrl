@@ -1,6 +1,6 @@
 
 -type var_id() :: fm10|air_temp|rel_humidity|soil_temp|pressure|accum_precip|fuel_temp|wind_speed|wind_dir|wind_gust|solar_rad.
--type station_selector() :: {station_list,[string()]}|{region,{number(),number()},{number(),number()}}|{station_file,string()}.
+-type station_selector() :: {station_list,[string()]}|{region,{number(),number()},{number(),number()}}|{station_file,string()}|empty_station_selector.
 -type var_selector() :: all_vars|[var_id()].
 
 -record(raws_obs,{
