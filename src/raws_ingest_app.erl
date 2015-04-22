@@ -11,12 +11,17 @@
 %% Application callbacks
 %% ===================================================================
 
-start(_StartType, Args=[StationSel,VarIds,TimeoutMins,Method]) ->
+start(_StartType, Args=[StationSel0,VarIds0,TimeoutMins0,Method0]) ->
   Cfg = read_config(),
   Db = proplists:get_value(dbase, Cfg),
   User = proplists:get_value(user, Cfg),
   Pass = proplists:get_value(password, Cfg),
   pgsql_manager:start_link(Db,User,Pass,5),
+  StationSel = proplists:get_value(station_selector, Cfg, StationSel0),
+  VarIds = proplists:get_value(var_ids, Cfg, VarIds0),
+  TimeoutMins = proplists:get_value(timeout_mins, Cfg, TimeoutMins0),
+  Method = proplists:get_value(method, Cfg, Method0),
+
   check_station_selector(StationSel),
   true = lists:foldl(fun (X,Acc) -> mesowest_wisdom:is_known_var(X) and Acc end, true, VarIds),
   check_timeout_mins(TimeoutMins),
