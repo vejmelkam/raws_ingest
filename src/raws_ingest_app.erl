@@ -11,7 +11,7 @@
 %% Application callbacks
 %% ===================================================================
 
-start(_StartType, Args=[StationSel0,VarIds0,TimeoutMins0,Method0]) ->
+start(_StartType, [StationSel0,VarIds0,TimeoutMins0,Method0]) ->
   Cfg = read_config(),
   Db = proplists:get_value(dbase, Cfg),
   User = proplists:get_value(user, Cfg),
@@ -26,7 +26,7 @@ start(_StartType, Args=[StationSel0,VarIds0,TimeoutMins0,Method0]) ->
   true = lists:foldl(fun (X,Acc) -> mesowest_wisdom:is_known_var(X) and Acc end, true, VarIds),
   check_timeout_mins(TimeoutMins),
   check_method(Method),
-  raws_ingest_sup:start_link([Cfg|Args]).
+  raws_ingest_sup:start_link([Cfg,StationSel,VarIds,TimeoutMins,Method]).
 
 
 stop(_State) ->
