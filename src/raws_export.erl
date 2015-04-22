@@ -95,7 +95,7 @@ station_info_to_kml(#raws_station{id=I,name=N,lat=Lat,lon=Lon,elevation=Elev}) -
   [LonS,LatS,ElevS] = lists:map(fun (X) -> io_lib:format("~p", [X]) end, [Lon,Lat,Elev]),
   [ "<Placemark>\n",
     "  <name>",I,"</name>\n",
-    "  <Point><coordinates>",LonS,",",LatS,",0</coordinates></Point>\n",
+    "  <Point><coordinates>",LonS,",",LatS,",0</coordinates></Point>\n", % elevations is above surface, not above sea level
     "  <description><![CDATA[ <b>Name:</b> ",N,"<br><b>Lat/Lon:</b>",LatS,",",LonS,"<br><b>Elevation:</b>",ElevS,"]]></description>\n"
     "</Placemark>\n"].
 
@@ -104,8 +104,8 @@ station_info_to_kml(#raws_station{id=I,name=N,lat=Lat,lon=Lon,elevation=Elev}) -
 obs_to_csv_string([],_,Lines) ->
   string:join(lists:reverse(Lines),"\n");
 obs_to_csv_string([O|Rest],Sep,Lines) ->
-  #raws_obs{timestamp={{Y,M,D},{H,Min,S}},lat=Lat,lon=Lon,value=Val,variance=Var} = O,
-  StrList = lists:map(fun item_to_list/1, [Y,M,D,H,Min,S,Lat,Lon,Val,Var]),
+  #raws_obs{timestamp={{Y,M,D},{H,Min,S}},lat=Lat,lon=Lon,elevation=Elev,value=Val,variance=Var} = O,
+  StrList = lists:map(fun item_to_list/1, [Y,M,D,H,Min,S,Lat,Lon,Elev,Val,Var]),
   obs_to_csv_string(Rest,Sep,[lists:flatten(string:join(StrList, Sep))|Lines]).
 
 
